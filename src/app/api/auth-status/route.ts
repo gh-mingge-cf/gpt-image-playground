@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
+import { isAppPasswordEnabled } from '@/lib/server/auth';
 
 export async function GET() {
-    const appPasswordSet = !!process.env.APP_PASSWORD;
-    return NextResponse.json({ passwordRequired: appPasswordSet });
+    return NextResponse.json({ passwordRequired: isAppPasswordEnabled() });
 }

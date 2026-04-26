@@ -40,6 +40,7 @@ A web-based playground to interact with OpenAI's GPT image models (`gpt-image-2`
 *   **🖼️ Flexible Image Output View:** View generated image batches as a grid or select individual images for a closer look.
 *   **🚀 Send to Edit:** Quickly send any generated or history image directly to the editing form.
 *   **📋 Paste to Edit:** Paste images directly from your clipboard into the Edit mode's source image area.
+*   **🔐 Runtime API Settings:** Change the server-side OpenAI API key and base URL from the UI without restarting the app. New requests use the updated settings immediately.
 *   **💾 Storage:** Supports two modes via `NEXT_PUBLIC_IMAGE_STORAGE_MODE`:
     *   **Filesystem (default):** Images saved to `./generated-images` on the server.
     *   **IndexedDB:** Images saved directly in the browser's IndexedDB (ideal for serverless deployments).
@@ -55,7 +56,53 @@ You can deploy your own instance of this playground to Vercel with one click:
 
 You will be prompted to enter your `OPENAI_API_KEY` and `APP_PASSWORD` during the deployment setup. For Vercel deployments, it's required to set `NEXT_PUBLIC_IMAGE_STORAGE_MODE` to `indexeddb`. 
 
+> **Important:** The runtime API settings UI stores overrides on the server filesystem. That works well on Docker, a VM, or a persistent disk, but it is **not a durable configuration mechanism on Vercel** or other ephemeral serverless hosts. On Vercel, prefer environment variables.
+
 Note: If `NEXT_PUBLIC_IMAGE_STORAGE_MODE` is not set, the application will automatically detect if it's running on Vercel (using the `VERCEL` or `NEXT_PUBLIC_VERCEL_ENV` environment variables) and default to `indexeddb` mode in that case. Otherwise (e.g., running locally), it defaults to `fs` mode. You can always explicitly set the variable to `fs` or `indexeddb` to override this automatic behavior.
+
+## 🐳 Docker Deployment
+
+This repository includes a `Dockerfile` and `docker-compose.yml` for a persistent self-hosted deployment.
+
+### 1. Create `.env`
+
+`OPENAI_API_KEY` is now optional at startup. You can set it here, or leave it unset and configure it later from the **API Settings** button in the UI.
+
+```dotenv
+NEXT_PUBLIC_IMAGE_STORAGE_MODE=fs
+APP_PASSWORD=change-me
+
+# Optional defaults
+# OPENAI_API_KEY=sk-...
+# OPENAI_API_BASE_URL=https://your-openai-compatible-endpoint/v1
+```
+
+If you expose this UI beyond a private LAN, setting `APP_PASSWORD` is strongly recommended.
+
+### 2. Start the container
+
+```bash
+docker compose up -d --build
+docker compose logs -f
+```
+
+Then open `http://localhost:3000`.
+
+### 3. Configure or rotate the API key from the UI
+
+1. Click **API Settings** in the top-right corner.
+2. If `APP_PASSWORD` is set, enter that password first.
+3. Paste a new API key into **New API key** and click **Save**.
+4. New image requests will use the updated key immediately. No container restart is required.
+
+The runtime settings are persisted in `/app/data/runtime-config.json`, which `docker-compose.yml` stores in the `gpt-image-config` Docker volume.
+
+### Runtime override behavior
+
+*   A saved runtime API key overrides `OPENAI_API_KEY`.
+*   A saved runtime base URL overrides `OPENAI_API_BASE_URL`.
+*   **Clear Saved API Key** removes only the runtime API key override.
+*   **Reset Runtime Overrides** deletes all saved runtime overrides and falls back to environment variables again.
 
 ## 🚀 Getting Started [Local Deployment]
 
@@ -66,20 +113,29 @@ Follow these steps to get the playground running locally.
 *   [Node.js](https://nodejs.org/) (Version 20 or later required)
 *   [npm](https://www.npmjs.com/), [yarn](https://yarnpkg.com/), [pnpm](https://pnpm.io/), or [bun](https://bun.sh/)
 
-### 1. Set Up API Key 🟢
+### 1. Configure Environment 🟢
 
-You need an OpenAI API key to use this application. 
+You can provide an API key up front via environment variables, or configure it later from the UI.
 
 ⚠️ [Your OpenAI Organization needs to be verified to use GPT Image models](https://help.openai.com/en/articles/10910291-api-organization-verification)
 
 1.  If you don't have a `.env.local` file, create one.
-2.  Add your OpenAI API key to the `.env.local` file:
+2.  Add any environment variables you want to use:
 
     ```dotenv
+    # Optional at startup; can also be set later in API Settings
     OPENAI_API_KEY=your_openai_api_key_here
+
+    # Optional OpenAI-compatible endpoint
+    OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
+
+    # Recommended if you want to protect the UI and runtime settings
+    APP_PASSWORD=your_password_here
     ```
 
     **Important:** Keep your API key secret. The `.env.local` file is included in `.gitignore` by default to prevent accidental commits.
+
+3.  If you prefer not to keep a key in `.env.local`, leave `OPENAI_API_KEY` unset and add it after startup from the **API Settings** button in the UI.
 
 ---
 
@@ -115,12 +171,24 @@ If `OPENAI_API_BASE_URL` is not set, the application will default to the standar
 
 ---
 
+#### 🟡 (Optional) Runtime API Settings via the UI
+
+The **API Settings** button in the top-right corner lets you save a runtime API key and base URL without restarting the app.
+
+*   Leaving the **New API key** field blank keeps the current key unchanged.
+*   Clearing the **Base URL** field and saving falls back to `OPENAI_API_BASE_URL` or the OpenAI default endpoint.
+*   **Reset Runtime Overrides** deletes the saved runtime config file and returns to environment variables.
+
+Runtime settings are stored in `./data/runtime-config.json` for local runs.
+
+---
+
 
 #### 🟡 (Optional) Enable Password Validation
 ```dotenv
 APP_PASSWORD=your_password_here
 ```
-When `APP_PASSWORD` is set, the frontend will prompt you for a password to authenticate requests.
+When `APP_PASSWORD` is set, the frontend will prompt you for a password to authenticate requests and to open the runtime API settings dialog.
 <p align="center">
   <img src="./readme-images/password-dialog.jpg" alt="Password Dialog" width="460"/>
 </p>
@@ -157,7 +225,8 @@ npm run dev
 
 ### 4. Open the Playground 🟢
 
-Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use the gpt-image-1 Playground!
+Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use GPT Image Playground.
+If you did not set `OPENAI_API_KEY` in `.env.local`, click **API Settings** and add it there before generating images.
 
 ## 🤝 Contributing
 

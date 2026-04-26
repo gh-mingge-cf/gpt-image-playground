@@ -5,11 +5,17 @@ import { GenerationForm, type GenerationFormData } from '@/components/generation
 import { HistoryPanel } from '@/components/history-panel';
 import { ImageOutput } from '@/components/image-output';
 import { PasswordDialog } from '@/components/password-dialog';
+import {
+    RuntimeConfigDialog,
+    type RuntimeConfigDialogStatus
+} from '@/components/runtime-config-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { calculateApiCost, type CostDetails, type GptImageModel } from '@/lib/cost-utils';
 import { getPresetDimensions } from '@/lib/size-utils';
 import { db, type ImageRecord } from '@/lib/db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Settings2 } from 'lucide-react';
 import * as React from 'react';
 
 type HistoryImage = {
@@ -79,11 +85,21 @@ export default function HomePage() {
     const [isInitialLoad, setIsInitialLoad] = React.useState(true);
     const blobUrlCacheRef = React.useRef<Map<string, string>>(new Map());
     const [isPasswordDialogOpen, setIsPasswordDialogOpen] = React.useState(false);
-    const [passwordDialogContext, setPasswordDialogContext] = React.useState<'initial' | 'retry'>('initial');
+    const [passwordDialogContext, setPasswordDialogContext] = React.useState<'initial' | 'retry' | 'settings'>(
+        'initial'
+    );
     const [lastApiCallArgs, setLastApiCallArgs] = React.useState<[GenerationFormData | EditingFormData] | null>(null);
     const [skipDeleteConfirmation, setSkipDeleteConfirmation] = React.useState<boolean>(false);
     const [itemToDeleteConfirm, setItemToDeleteConfirm] = React.useState<HistoryMetadata | null>(null);
     const [dialogCheckboxStateSkipConfirm, setDialogCheckboxStateSkipConfirm] = React.useState<boolean>(false);
+    const [isRuntimeConfigDialogOpen, setIsRuntimeConfigDialogOpen] = React.useState(false);
+    const [runtimeConfigStatus, setRuntimeConfigStatus] = React.useState<RuntimeConfigDialogStatus | null>(null);
+    const [runtimeConfigApiKey, setRuntimeConfigApiKey] = React.useState('');
+    const [runtimeConfigBaseURL, setRuntimeConfigBaseURL] = React.useState('');
+    const [runtimeConfigError, setRuntimeConfigError] = React.useState<string | null>(null);
+    const [runtimeConfigSuccess, setRuntimeConfigSuccess] = React.useState<string | null>(null);
+    const [isLoadingRuntimeConfig, setIsLoadingRuntimeConfig] = React.useState(false);
+    const [isSavingRuntimeConfig, setIsSavingRuntimeConfig] = React.useState(false);
 
     const allDbImages = useLiveQuery<ImageRecord[] | undefined>(() => db.images.toArray(), []);
 
@@ -271,6 +287,56 @@ export default function HomePage() {
         return hashHex;
     }
 
+    const fetchRuntimeConfigStatus = React.useCallback(
+        async ({
+            openDialog = false,
+            passwordHashOverride
+        }: { openDialog?: boolean; passwordHashOverride?: string | null } = {}) => {
+            setIsLoadingRuntimeConfig(true);
+            setRuntimeConfigError(null);
+            setRuntimeConfigSuccess(null);
+
+            try {
+                const headers: HeadersInit = {};
+                const effectivePasswordHash = passwordHashOverride ?? clientPasswordHash;
+                if (effectivePasswordHash) {
+                    headers['x-password-hash'] = effectivePasswordHash;
+                }
+
+                const response = await fetch('/api/runtime-config', { headers });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    if (response.status === 401 && isPasswordRequiredByBackend) {
+                        setPasswordDialogContext('settings');
+                        setIsPasswordDialogOpen(true);
+                        throw new Error(result.error || 'Unauthorized: Invalid or missing password.');
+                    }
+
+                    throw new Error(result.error || `Failed to load API settings (${response.status}).`);
+                }
+
+                setRuntimeConfigStatus(result);
+                setRuntimeConfigApiKey('');
+                setRuntimeConfigBaseURL(result.baseURL || '');
+
+                if (openDialog) {
+                    setIsRuntimeConfigDialogOpen(true);
+                }
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'Failed to load API settings.';
+                setRuntimeConfigError(message);
+
+                if (openDialog && !(isPasswordRequiredByBackend && message.startsWith('Unauthorized'))) {
+                    setIsRuntimeConfigDialogOpen(true);
+                }
+            } finally {
+                setIsLoadingRuntimeConfig(false);
+            }
+        },
+        [clientPasswordHash, isPasswordRequiredByBackend]
+    );
+
     const handleSavePassword = async (password: string) => {
         if (!password.trim()) {
             setError('Password cannot be empty.');
@@ -284,6 +350,8 @@ export default function HomePage() {
             setIsPasswordDialogOpen(false);
             if (passwordDialogContext === 'retry' && lastApiCallArgs) {
                 await handleApiCall(...lastApiCallArgs);
+            } else if (passwordDialogContext === 'settings') {
+                await fetchRuntimeConfigStatus({ openDialog: true, passwordHashOverride: hash });
             }
         } catch (e) {
             console.error('Error hashing password:', e);
@@ -295,6 +363,151 @@ export default function HomePage() {
         setPasswordDialogContext('initial');
         setIsPasswordDialogOpen(true);
     };
+
+    const handleOpenRuntimeConfigDialog = React.useCallback(async () => {
+        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+            setPasswordDialogContext('settings');
+            setIsPasswordDialogOpen(true);
+            return;
+        }
+
+        await fetchRuntimeConfigStatus({ openDialog: true });
+    }, [clientPasswordHash, fetchRuntimeConfigStatus, isPasswordRequiredByBackend]);
+
+    const handleSaveRuntimeConfig = React.useCallback(async () => {
+        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+            setPasswordDialogContext('settings');
+            setIsPasswordDialogOpen(true);
+            return;
+        }
+
+        setIsSavingRuntimeConfig(true);
+        setRuntimeConfigError(null);
+        setRuntimeConfigSuccess(null);
+
+        try {
+            const payload: Record<string, string> = {
+                baseURL: runtimeConfigBaseURL.trim()
+            };
+
+            if (runtimeConfigApiKey.trim()) {
+                payload.apiKey = runtimeConfigApiKey.trim();
+            }
+
+            if (clientPasswordHash) {
+                payload.passwordHash = clientPasswordHash;
+            }
+
+            const response = await fetch('/api/runtime-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 401 && isPasswordRequiredByBackend) {
+                    setPasswordDialogContext('settings');
+                    setIsPasswordDialogOpen(true);
+                }
+                throw new Error(result.error || `Failed to save API settings (${response.status}).`);
+            }
+
+            setRuntimeConfigStatus(result);
+            setRuntimeConfigApiKey('');
+            setRuntimeConfigBaseURL(result.baseURL || '');
+            setRuntimeConfigSuccess('API settings saved. New requests will use them immediately.');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to save API settings.';
+            setRuntimeConfigError(message);
+        } finally {
+            setIsSavingRuntimeConfig(false);
+        }
+    }, [clientPasswordHash, isPasswordRequiredByBackend, runtimeConfigApiKey, runtimeConfigBaseURL]);
+
+    const handleClearRuntimeApiKey = React.useCallback(async () => {
+        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+            setPasswordDialogContext('settings');
+            setIsPasswordDialogOpen(true);
+            return;
+        }
+
+        setIsSavingRuntimeConfig(true);
+        setRuntimeConfigError(null);
+        setRuntimeConfigSuccess(null);
+
+        try {
+            const response = await fetch('/api/runtime-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    clearApiKey: true,
+                    passwordHash: clientPasswordHash ?? undefined
+                })
+            });
+            const result = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 401 && isPasswordRequiredByBackend) {
+                    setPasswordDialogContext('settings');
+                    setIsPasswordDialogOpen(true);
+                }
+                throw new Error(result.error || `Failed to clear the saved API key (${response.status}).`);
+            }
+
+            setRuntimeConfigStatus(result);
+            setRuntimeConfigApiKey('');
+            setRuntimeConfigBaseURL(result.baseURL || '');
+            setRuntimeConfigSuccess('Saved runtime API key cleared.');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to clear the saved API key.';
+            setRuntimeConfigError(message);
+        } finally {
+            setIsSavingRuntimeConfig(false);
+        }
+    }, [clientPasswordHash, isPasswordRequiredByBackend]);
+
+    const handleResetRuntimeConfig = React.useCallback(async () => {
+        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+            setPasswordDialogContext('settings');
+            setIsPasswordDialogOpen(true);
+            return;
+        }
+
+        setIsSavingRuntimeConfig(true);
+        setRuntimeConfigError(null);
+        setRuntimeConfigSuccess(null);
+
+        try {
+            const response = await fetch('/api/runtime-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    resetToEnv: true,
+                    passwordHash: clientPasswordHash ?? undefined
+                })
+            });
+            const result = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 401 && isPasswordRequiredByBackend) {
+                    setPasswordDialogContext('settings');
+                    setIsPasswordDialogOpen(true);
+                }
+                throw new Error(result.error || `Failed to reset API settings (${response.status}).`);
+            }
+
+            setRuntimeConfigStatus(result);
+            setRuntimeConfigApiKey('');
+            setRuntimeConfigBaseURL(result.baseURL || '');
+            setRuntimeConfigSuccess('Runtime overrides cleared. Environment values are active again.');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to reset API settings.';
+            setRuntimeConfigError(message);
+        } finally {
+            setIsSavingRuntimeConfig(false);
+        }
+    }, [clientPasswordHash, isPasswordRequiredByBackend]);
 
     const getMimeTypeFromFormat = (format: string): string => {
         if (format === 'jpeg') return 'image/jpeg';
@@ -868,14 +1081,56 @@ export default function HomePage() {
                 isOpen={isPasswordDialogOpen}
                 onOpenChange={setIsPasswordDialogOpen}
                 onSave={handleSavePassword}
-                title={passwordDialogContext === 'retry' ? 'Password Required' : 'Configure Password'}
+                title={
+                    passwordDialogContext === 'retry'
+                        ? 'Password Required'
+                        : passwordDialogContext === 'settings'
+                          ? 'Unlock API Settings'
+                          : 'Configure Password'
+                }
                 description={
                     passwordDialogContext === 'retry'
                         ? 'The server requires a password, or the previous one was incorrect. Please enter it to continue.'
+                        : passwordDialogContext === 'settings'
+                          ? 'Enter the server password to view or change the runtime API settings.'
                         : 'Set a password to use for API requests.'
                 }
             />
+            <RuntimeConfigDialog
+                isOpen={isRuntimeConfigDialogOpen}
+                onOpenChange={setIsRuntimeConfigDialogOpen}
+                status={runtimeConfigStatus}
+                apiKeyValue={runtimeConfigApiKey}
+                onApiKeyChange={setRuntimeConfigApiKey}
+                baseURLValue={runtimeConfigBaseURL}
+                onBaseURLChange={setRuntimeConfigBaseURL}
+                onSave={handleSaveRuntimeConfig}
+                onClearRuntimeApiKey={handleClearRuntimeApiKey}
+                onResetToEnv={handleResetRuntimeConfig}
+                isLoading={isLoadingRuntimeConfig}
+                isSaving={isSavingRuntimeConfig}
+                isPasswordProtected={Boolean(isPasswordRequiredByBackend)}
+                error={runtimeConfigError}
+                success={runtimeConfigSuccess}
+            />
             <div className='w-full max-w-screen-2xl space-y-6'>
+                <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+                    <div>
+                        <h1 className='text-2xl font-semibold text-white'>GPT Image Playground</h1>
+                        <p className='mt-1 text-sm text-white/60'>
+                            Generate and edit images with runtime OpenAI API settings.
+                        </p>
+                    </div>
+                    <Button
+                        type='button'
+                        variant='outline'
+                        onClick={handleOpenRuntimeConfigDialog}
+                        disabled={isLoadingRuntimeConfig}
+                        className='border-white/20 bg-black text-white hover:bg-white/10 hover:text-white'>
+                        <Settings2 className='h-4 w-4' />
+                        API Settings
+                    </Button>
+                </div>
                 <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
                     <div className='relative flex h-[70vh] min-h-[600px] flex-col lg:col-span-1'>
                         <div className={mode === 'generate' ? 'block h-full w-full' : 'hidden'}>

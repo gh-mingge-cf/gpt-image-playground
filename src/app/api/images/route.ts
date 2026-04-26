@@ -1,8 +1,9 @@
-import crypto from 'crypto';
 import fs from 'fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import path from 'path';
+import { validatePasswordHash } from '@/lib/server/auth';
+import { getEffectiveOpenAIConfig } from '@/lib/server/runtime-config';
 
 // Streaming event types
 type StreamingEvent = {
@@ -22,11 +23,6 @@ type StreamingEvent = {
     }>;
     error?: string;
 };
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_API_BASE_URL
-});
 
 const outputDir = path.resolve(process.cwd(), 'generated-images');
 
@@ -69,17 +65,8 @@ async function ensureOutputDirExists() {
     }
 }
 
-function sha256(data: string): string {
-    return crypto.createHash('sha256').update(data).digest('hex');
-}
-
 export async function POST(request: NextRequest) {
     console.log('Received POST request to /api/images');
-
-    if (!process.env.OPENAI_API_KEY) {
-        console.error('OPENAI_API_KEY is not set.');
-        return NextResponse.json({ error: 'Server configuration error: API key not found.' }, { status: 500 });
-    }
     try {
         let effectiveStorageMode: 'fs' | 'indexeddb';
         const explicitMode = process.env.NEXT_PUBLIC_IMAGE_STORAGE_MODE;
@@ -104,18 +91,27 @@ export async function POST(request: NextRequest) {
 
         const formData = await request.formData();
 
-        if (process.env.APP_PASSWORD) {
-            const clientPasswordHash = formData.get('passwordHash') as string | null;
-            if (!clientPasswordHash) {
-                console.error('Missing password hash.');
-                return NextResponse.json({ error: 'Unauthorized: Missing password hash.' }, { status: 401 });
-            }
-            const serverPasswordHash = sha256(process.env.APP_PASSWORD);
-            if (clientPasswordHash !== serverPasswordHash) {
-                console.error('Invalid password hash.');
-                return NextResponse.json({ error: 'Unauthorized: Invalid password.' }, { status: 401 });
-            }
+        const authError = validatePasswordHash(formData.get('passwordHash') as string | null);
+        if (authError) {
+            console.error(authError);
+            return NextResponse.json({ error: authError }, { status: 401 });
         }
+
+        const openAIConfig = await getEffectiveOpenAIConfig();
+        if (!openAIConfig.apiKey) {
+            console.error('No OpenAI API key is configured.');
+            return NextResponse.json(
+                {
+                    error: 'Server configuration error: OpenAI API key not configured. Set OPENAI_API_KEY or save one in API Settings.'
+                },
+                { status: 500 }
+            );
+        }
+
+        const openai = new OpenAI({
+            apiKey: openAIConfig.apiKey,
+            baseURL: openAIConfig.baseURL
+        });
 
         const mode = formData.get('mode') as 'generate' | 'edit' | null;
         const prompt = formData.get('prompt') as string | null;

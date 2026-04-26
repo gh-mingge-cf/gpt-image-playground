@@ -1,13 +1,9 @@
-import crypto from 'crypto';
 import fs from 'fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
+import { validatePasswordHash } from '@/lib/server/auth';
 
 const outputDir = path.resolve(process.cwd(), 'generated-images');
-
-function sha256(data: string): string {
-    return crypto.createHash('sha256').update(data).digest('hex');
-}
 
 type DeleteRequestBody = {
     filenames: string[];
@@ -29,18 +25,14 @@ export async function POST(request: NextRequest) {
         const clonedRequest = request.clone();
         const tempBodyForAuth = await clonedRequest.json();
 
-        if (process.env.APP_PASSWORD) {
-            const clientPasswordHash = tempBodyForAuth.passwordHash as string | null;
+        if (typeof tempBodyForAuth !== 'object' || tempBodyForAuth === null || Array.isArray(tempBodyForAuth)) {
+            return NextResponse.json({ error: 'Invalid request body: Must be a JSON object.' }, { status: 400 });
+        }
 
-            if (!clientPasswordHash) {
-                console.error('Missing password hash for delete operation.');
-                return NextResponse.json({ error: 'Unauthorized: Missing password hash.' }, { status: 401 });
-            }
-            const serverPasswordHash = sha256(process.env.APP_PASSWORD);
-            if (clientPasswordHash !== serverPasswordHash) {
-                console.error('Invalid password hash for delete operation.');
-                return NextResponse.json({ error: 'Unauthorized: Invalid password.' }, { status: 401 });
-            }
+        const authError = validatePasswordHash(tempBodyForAuth.passwordHash as string | null);
+        if (authError) {
+            console.error(authError);
+            return NextResponse.json({ error: authError }, { status: 401 });
         }
         // Now read the original request body for processing
         requestBody = await request.json();

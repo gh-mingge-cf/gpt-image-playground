@@ -1,0 +1,21 @@
+services:
+  gpt-image-playground:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        OPENAI_API_KEY: dummy
+    container_name: gpt-image-playground
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    volumes:
+      - gpt-image-data:/app/generated-images
+    restart: unless-stopped
+
+volumes:
+  gpt-image-data:

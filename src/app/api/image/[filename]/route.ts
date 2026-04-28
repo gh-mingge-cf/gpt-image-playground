@@ -10,12 +10,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { filename } = await params;
 
     if (!filename) {
-        return NextResponse.json({ error: 'Filename is required' }, { status: 400 });
+        return NextResponse.json({ error: '缺少文件名。' }, { status: 400 });
     }
 
     // Basic security: Prevent directory traversal
     if (filename.includes('..') || filename.startsWith('/') || filename.startsWith('\\')) {
-        return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
+        return NextResponse.json({ error: '文件名无效。' }, { status: 400 });
     }
 
     const filepath = path.join(imageBaseDir, filename);
@@ -37,8 +37,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     } catch (error: unknown) {
         console.error(`Error serving image ${filename}:`, error);
         if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
-            return NextResponse.json({ error: 'Image not found' }, { status: 404 });
+            return NextResponse.json({ error: '图片不存在。' }, { status: 404 });
         }
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        return NextResponse.json({ error: '服务器内部错误。' }, { status: 500 });
     }
 }

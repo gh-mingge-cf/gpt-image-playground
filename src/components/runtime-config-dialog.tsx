@@ -43,6 +43,21 @@ interface RuntimeConfigDialogProps {
     success: string | null;
 }
 
+function formatConfigSource(source: RuntimeConfigDialogStatus['apiKeySource']): string {
+    switch (source) {
+        case 'runtime':
+            return '运行时配置';
+        case 'env':
+            return '环境变量';
+        case 'default':
+            return '默认值';
+        case 'none':
+            return '未配置';
+        default:
+            return source;
+    }
+}
+
 export function RuntimeConfigDialog({
     isOpen,
     onOpenChange,
@@ -66,10 +81,9 @@ export function RuntimeConfigDialog({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className='border-white/20 bg-black text-white sm:max-w-[560px]'>
                 <DialogHeader>
-                    <DialogTitle className='text-white'>API Settings</DialogTitle>
+                    <DialogTitle className='text-white'>API 设置</DialogTitle>
                     <DialogDescription className='text-white/60'>
-                        Runtime changes apply to new image requests immediately. API key input is write-only and will
-                        not be shown after saving.
+                        运行时修改会立即作用于新的图片请求。API Key 输入框只用于写入，保存后不会回显明文。
                     </DialogDescription>
                 </DialogHeader>
 
@@ -77,27 +91,32 @@ export function RuntimeConfigDialog({
                     {!isPasswordProtected && (
                         <div className='rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100'>
                             <code className='rounded bg-black/30 px-1 py-0.5 text-xs text-amber-50'>APP_PASSWORD</code>{' '}
-                            is not set. Anyone who can open this UI can change the runtime API settings.
+                            未设置。任何能打开此页面的人都可以修改运行时 API 设置。
                         </div>
                     )}
 
                     {status && (
                         <div className='space-y-2 rounded-md border border-white/10 bg-white/5 p-4 text-sm'>
                             <p>
-                                Active API key: <span className='font-medium text-white'>{status.maskedApiKey ?? 'Not configured'}</span>
+                                当前 API Key:{' '}
+                                <span className='font-medium text-white'>{status.maskedApiKey ?? '未配置'}</span>
                             </p>
                             <p>
-                                API key source: <span className='font-medium text-white'>{status.apiKeySource}</span>
+                                API Key 来源:{' '}
+                                <span className='font-medium text-white'>{formatConfigSource(status.apiKeySource)}</span>
                             </p>
                             <p>
-                                Active base URL:{' '}
-                                <span className='font-medium text-white'>{status.baseURL || 'OpenAI default'}</span>
+                                当前 Base URL:{' '}
+                                <span className='font-medium text-white'>{status.baseURL || 'OpenAI 默认端点'}</span>
                             </p>
                             <p>
-                                Base URL source: <span className='font-medium text-white'>{status.baseURLSource}</span>
+                                Base URL 来源:{' '}
+                                <span className='font-medium text-white'>
+                                    {formatConfigSource(status.baseURLSource)}
+                                </span>
                             </p>
                             <p>
-                                Runtime config path:{' '}
+                                运行时配置路径:{' '}
                                 <code className='rounded bg-white/10 px-1.5 py-0.5 text-xs text-white/90'>
                                     {status.runtimeConfigPath}
                                 </code>
@@ -107,18 +126,18 @@ export function RuntimeConfigDialog({
 
                     <div className='space-y-2'>
                         <Label htmlFor='runtime-api-key' className='text-white'>
-                            New API key
+                            新 API Key
                         </Label>
                         <Input
                             id='runtime-api-key'
                             type='password'
                             value={apiKeyValue}
                             onChange={(e) => onApiKeyChange(e.target.value)}
-                            placeholder='Leave blank to keep the current key'
+                            placeholder='留空表示保留当前 Key'
                             disabled={isBusy}
                             className='border-white/20 bg-black text-white placeholder:text-white/40 focus:border-white/50 focus:ring-white/50'
                         />
-                        <p className='text-xs text-white/50'>Only enter this when you want to replace the active key.</p>
+                        <p className='text-xs text-white/50'>只有需要替换当前 Key 时才填写此项。</p>
                     </div>
 
                     <div className='space-y-2'>
@@ -134,7 +153,7 @@ export function RuntimeConfigDialog({
                             className='border-white/20 bg-black text-white placeholder:text-white/40 focus:border-white/50 focus:ring-white/50'
                         />
                         <p className='text-xs text-white/50'>
-                            Clear this field and save to fall back to `OPENAI_API_BASE_URL` or the OpenAI default.
+                            清空后保存，将回退到 `OPENAI_API_BASE_URL` 或 OpenAI 默认端点。
                         </p>
                     </div>
 
@@ -156,7 +175,7 @@ export function RuntimeConfigDialog({
                             onClick={onClearRuntimeApiKey}
                             disabled={isBusy || !status?.runtimeApiKeyConfigured}
                             className='border-white/20 bg-black text-white hover:bg-white/10 hover:text-white'>
-                            Clear Saved API Key
+                            清除已保存的 API Key
                         </Button>
                         <Button
                             type='button'
@@ -164,7 +183,7 @@ export function RuntimeConfigDialog({
                             onClick={onResetToEnv}
                             disabled={isBusy || !status?.runtimeOverridesActive}
                             className='border-white/20 bg-black text-white hover:bg-white/10 hover:text-white'>
-                            Reset Runtime Overrides
+                            重置运行时覆盖
                         </Button>
                     </div>
                 </div>
@@ -175,7 +194,7 @@ export function RuntimeConfigDialog({
                         onClick={onSave}
                         disabled={isBusy}
                         className='bg-white px-6 text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-white/40'>
-                        {isBusy ? 'Saving...' : 'Save'}
+                        {isBusy ? '保存中...' : '保存'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

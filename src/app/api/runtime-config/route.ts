@@ -23,7 +23,7 @@ function unauthorizedResponse(message: string) {
 }
 
 function getErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return error instanceof Error ? error.message : '发生未知错误。';
 }
 
 export async function GET(request: NextRequest) {
@@ -47,11 +47,11 @@ export async function POST(request: NextRequest) {
         requestBody = await request.json();
     } catch (error: unknown) {
         console.error('Failed to parse runtime config request body:', error);
-        return NextResponse.json({ error: 'Invalid request body: Must be JSON.' }, { status: 400 });
+        return NextResponse.json({ error: '请求体无效：必须是 JSON。' }, { status: 400 });
     }
 
     if (typeof requestBody !== 'object' || requestBody === null || Array.isArray(requestBody)) {
-        return NextResponse.json({ error: 'Invalid request body: Must be a JSON object.' }, { status: 400 });
+        return NextResponse.json({ error: '请求体无效：必须是 JSON 对象。' }, { status: 400 });
     }
 
     const authError = validatePasswordHash(requestBody.passwordHash);

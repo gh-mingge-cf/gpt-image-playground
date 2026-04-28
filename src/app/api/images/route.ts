@@ -54,12 +54,12 @@ async function ensureOutputDirExists() {
                 console.log(`Created output directory: ${outputDir}`);
             } catch (mkdirError) {
                 console.error(`Error creating output directory ${outputDir}:`, mkdirError);
-                throw new Error('Failed to create image output directory.');
+                throw new Error('创建图片输出目录失败。');
             }
         } else {
             console.error(`Error accessing output directory ${outputDir}:`, error);
             throw new Error(
-                `Failed to access or ensure image output directory exists. Original error: ${error instanceof Error ? error.message : String(error)}`
+                `访问或创建图片输出目录失败：${error instanceof Error ? error.message : String(error)}`
             );
         }
     }
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
             console.error('No OpenAI API key is configured.');
             return NextResponse.json(
                 {
-                    error: 'Server configuration error: OpenAI API key not configured. Set OPENAI_API_KEY or save one in API Settings.'
+                    error: '服务器配置错误：未配置 OpenAI API Key。请设置 `OPENAI_API_KEY`，或在“API 设置”中保存一个 Key。'
                 },
                 { status: 500 }
             );
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         console.log(`Mode: ${mode}, Model: ${model}, Prompt: ${prompt ? prompt.substring(0, 50) + '...' : 'N/A'}`);
 
         if (!mode || !prompt) {
-            return NextResponse.json({ error: 'Missing required parameters: mode and prompt' }, { status: 400 });
+            return NextResponse.json({ error: '缺少必要参数：`mode` 和 `prompt`。' }, { status: 400 });
         }
 
         // Check for streaming mode
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
                             console.error('Streaming error:', error);
                             const errorEvent: StreamingEvent = {
                                 type: 'error',
-                                error: error instanceof Error ? error.message : 'Streaming error occurred'
+                                error: error instanceof Error ? error.message : '流式生成时发生错误。'
                             };
                             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
                             controller.close();
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
             }
 
             if (imageFiles.length === 0) {
-                return NextResponse.json({ error: 'No image file provided for editing.' }, { status: 400 });
+                return NextResponse.json({ error: '编辑模式未提供图片文件。' }, { status: 400 });
             }
 
             const maskFile = formData.get('mask') as File | null;
@@ -399,7 +399,7 @@ export async function POST(request: NextRequest) {
                             console.error('Streaming edit error:', error);
                             const errorEvent: StreamingEvent = {
                                 type: 'error',
-                                error: error instanceof Error ? error.message : 'Streaming error occurred'
+                                error: error instanceof Error ? error.message : '流式编辑时发生错误。'
                             };
                             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
                             controller.close();
@@ -428,21 +428,21 @@ export async function POST(request: NextRequest) {
             });
             result = await openai.images.edit(params);
         } else {
-            return NextResponse.json({ error: 'Invalid mode specified' }, { status: 400 });
+            return NextResponse.json({ error: '无效的模式参数。' }, { status: 400 });
         }
 
         console.log('OpenAI API call successful.');
 
         if (!result || !Array.isArray(result.data) || result.data.length === 0) {
             console.error('Invalid or empty data received from OpenAI API:', result);
-            return NextResponse.json({ error: 'Failed to retrieve image data from API.' }, { status: 500 });
+            return NextResponse.json({ error: '从 API 获取图片数据失败。' }, { status: 500 });
         }
 
         const savedImagesData = await Promise.all(
             result.data.map(async (imageData, index) => {
                 if (!imageData.b64_json) {
                     console.error(`Image data ${index} is missing b64_json.`);
-                    throw new Error(`Image data at index ${index} is missing base64 data.`);
+                    throw new Error(`第 ${index + 1} 张图片缺少 base64 数据。`);
                 }
                 const buffer = Buffer.from(imageData.b64_json, 'base64');
                 const timestamp = Date.now();
@@ -478,7 +478,7 @@ export async function POST(request: NextRequest) {
     } catch (error: unknown) {
         console.error('Error in /api/images:', error);
 
-        let errorMessage = 'An unexpected error occurred.';
+        let errorMessage = '发生未知错误。';
         let status = 500;
 
         if (error instanceof Error) {

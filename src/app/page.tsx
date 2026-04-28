@@ -249,7 +249,7 @@ export default function HomePage() {
             }
 
             if (editImageFiles.length >= MAX_EDIT_IMAGES) {
-                alert(`Cannot paste: Maximum of ${MAX_EDIT_IMAGES} images reached.`);
+                alert(`无法粘贴：最多只能添加 ${MAX_EDIT_IMAGES} 张图片。`);
                 return;
             }
 
@@ -310,10 +310,10 @@ export default function HomePage() {
                     if (response.status === 401 && isPasswordRequiredByBackend) {
                         setPasswordDialogContext('settings');
                         setIsPasswordDialogOpen(true);
-                        throw new Error(result.error || 'Unauthorized: Invalid or missing password.');
+                        throw new Error(result.error || '未授权：密码无效或缺失。');
                     }
 
-                    throw new Error(result.error || `Failed to load API settings (${response.status}).`);
+                    throw new Error(result.error || `加载 API 设置失败（${response.status}）。`);
                 }
 
                 setRuntimeConfigStatus(result);
@@ -324,10 +324,13 @@ export default function HomePage() {
                     setIsRuntimeConfigDialogOpen(true);
                 }
             } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : 'Failed to load API settings.';
+                const message = err instanceof Error ? err.message : '加载 API 设置失败。';
                 setRuntimeConfigError(message);
 
-                if (openDialog && !(isPasswordRequiredByBackend && message.startsWith('Unauthorized'))) {
+                if (
+                    openDialog &&
+                    !(isPasswordRequiredByBackend && (message.startsWith('Unauthorized') || message.startsWith('未授权')))
+                ) {
                     setIsRuntimeConfigDialogOpen(true);
                 }
             } finally {
@@ -339,7 +342,7 @@ export default function HomePage() {
 
     const handleSavePassword = async (password: string) => {
         if (!password.trim()) {
-            setError('Password cannot be empty.');
+            setError('密码不能为空。');
             return;
         }
         try {
@@ -355,7 +358,7 @@ export default function HomePage() {
             }
         } catch (e) {
             console.error('Error hashing password:', e);
-            setError('Failed to save password due to a hashing error.');
+            setError('保存密码失败：哈希计算出错。');
         }
     };
 
@@ -410,15 +413,15 @@ export default function HomePage() {
                     setPasswordDialogContext('settings');
                     setIsPasswordDialogOpen(true);
                 }
-                throw new Error(result.error || `Failed to save API settings (${response.status}).`);
+                throw new Error(result.error || `保存 API 设置失败（${response.status}）。`);
             }
 
             setRuntimeConfigStatus(result);
             setRuntimeConfigApiKey('');
             setRuntimeConfigBaseURL(result.baseURL || '');
-            setRuntimeConfigSuccess('API settings saved. New requests will use them immediately.');
+            setRuntimeConfigSuccess('API 设置已保存，新的请求会立即使用。');
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to save API settings.';
+            const message = err instanceof Error ? err.message : '保存 API 设置失败。';
             setRuntimeConfigError(message);
         } finally {
             setIsSavingRuntimeConfig(false);
@@ -452,15 +455,15 @@ export default function HomePage() {
                     setPasswordDialogContext('settings');
                     setIsPasswordDialogOpen(true);
                 }
-                throw new Error(result.error || `Failed to clear the saved API key (${response.status}).`);
+                throw new Error(result.error || `清除已保存的 API Key 失败（${response.status}）。`);
             }
 
             setRuntimeConfigStatus(result);
             setRuntimeConfigApiKey('');
             setRuntimeConfigBaseURL(result.baseURL || '');
-            setRuntimeConfigSuccess('Saved runtime API key cleared.');
+            setRuntimeConfigSuccess('已清除保存的运行时 API Key。');
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to clear the saved API key.';
+            const message = err instanceof Error ? err.message : '清除已保存的 API Key 失败。';
             setRuntimeConfigError(message);
         } finally {
             setIsSavingRuntimeConfig(false);
@@ -494,15 +497,15 @@ export default function HomePage() {
                     setPasswordDialogContext('settings');
                     setIsPasswordDialogOpen(true);
                 }
-                throw new Error(result.error || `Failed to reset API settings (${response.status}).`);
+                throw new Error(result.error || `重置 API 设置失败（${response.status}）。`);
             }
 
             setRuntimeConfigStatus(result);
             setRuntimeConfigApiKey('');
             setRuntimeConfigBaseURL(result.baseURL || '');
-            setRuntimeConfigSuccess('Runtime overrides cleared. Environment values are active again.');
+            setRuntimeConfigSuccess('运行时覆盖已清除，当前重新使用环境变量。');
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to reset API settings.';
+            const message = err instanceof Error ? err.message : '重置 API 设置失败。';
             setRuntimeConfigError(message);
         } finally {
             setIsSavingRuntimeConfig(false);
@@ -530,7 +533,7 @@ export default function HomePage() {
         if (isPasswordRequiredByBackend && clientPasswordHash) {
             apiFormData.append('passwordHash', clientPasswordHash);
         } else if (isPasswordRequiredByBackend && !clientPasswordHash) {
-            setError('Password is required. Please configure the password by clicking the lock icon.');
+            setError('需要密码。请点击锁形图标配置密码。');
             setPasswordDialogContext('initial');
             setIsPasswordDialogOpen(true);
             setIsLoading(false);
@@ -593,7 +596,7 @@ export default function HomePage() {
             const contentType = response.headers.get('content-type');
             if (contentType?.includes('text/event-stream')) {
                 if (!response.body) {
-                    throw new Error('Response body is null');
+                    throw new Error('响应内容为空。');
                 }
 
                 const reader = response.body.getReader();
@@ -626,7 +629,7 @@ export default function HomePage() {
                                         return newMap;
                                     });
                                 } else if (event.type === 'error') {
-                                    throw new Error(event.error || 'Streaming error occurred');
+                                    throw new Error(event.error || '流式生成出错。');
                                 } else if (event.type === 'done') {
                                     // Finalize with all completed images
                                     durationMs = Date.now() - startTime;
@@ -700,15 +703,11 @@ export default function HomePage() {
                                                             `Error saving blob ${img.filename} to IndexedDB:`,
                                                             dbError
                                                         );
-                                                        setError(
-                                                            `Failed to save image ${img.filename} to local database.`
-                                                        );
+                                                        setError(`保存图片 ${img.filename} 到本地数据库失败。`);
                                                         return null;
                                                     }
                                                 } else {
-                                                    console.warn(
-                                                        `Image ${img.filename} missing b64_json in indexeddb mode.`
-                                                    );
+                                                    console.warn(`IndexedDB 模式下图片 ${img.filename} 缺少 b64_json。`);
                                                     return null;
                                                 }
                                             });
@@ -752,14 +751,14 @@ export default function HomePage() {
 
             if (!response.ok) {
                 if (response.status === 401 && isPasswordRequiredByBackend) {
-                    setError('Unauthorized: Invalid or missing password. Please try again.');
+                    setError('未授权：密码无效或缺失，请重试。');
                     setPasswordDialogContext('retry');
                     setLastApiCallArgs([formData]);
                     setIsPasswordDialogOpen(true);
 
                     return;
                 }
-                throw new Error(result.error || `API request failed with status ${response.status}`);
+                throw new Error(result.error || `API 请求失败，状态码：${response.status}`);
             }
 
             if (result.images && result.images.length > 0) {
@@ -827,11 +826,11 @@ export default function HomePage() {
                                 return { filename: img.filename, path: blobUrl };
                             } catch (dbError) {
                                 console.error(`Error saving blob ${img.filename} to IndexedDB:`, dbError);
-                                setError(`Failed to save image ${img.filename} to local database.`);
+                                setError(`保存图片 ${img.filename} 到本地数据库失败。`);
                                 return null;
                             }
                         } else {
-                            console.warn(`Image ${img.filename} missing b64_json in indexeddb mode.`);
+                            console.warn(`IndexedDB 模式下图片 ${img.filename} 缺少 b64_json。`);
                             return null;
                         }
                     });
@@ -857,12 +856,12 @@ export default function HomePage() {
                 setHistory((prevHistory) => [newHistoryEntry, ...prevHistory]);
             } else {
                 setLatestImageBatch(null);
-                throw new Error('API response did not contain valid image data or filenames.');
+                throw new Error('API 响应中没有有效的图片数据或文件名。');
             }
         } catch (err: unknown) {
             durationMs = Date.now() - startTime;
             console.error(`API Call Error after ${durationMs}ms:`, err);
-            const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
+            const errorMessage = err instanceof Error ? err.message : '发生未知错误。';
             setError(errorMessage);
             setLatestImageBatch(null);
             setStreamingPreviewImages(new Map());
@@ -890,7 +889,7 @@ export default function HomePage() {
                     console.warn(
                         `Could not get image source for history item: ${imgInfo.filename} (mode: ${originalStorageMode})`
                     );
-                    setError(`Image ${imgInfo.filename} could not be loaded.`);
+                    setError(`无法加载图片 ${imgInfo.filename}。`);
                     return null;
                 }
             });
@@ -900,7 +899,7 @@ export default function HomePage() {
 
                 if (validImages.length !== item.images.length) {
                     setError(
-                        'Some images from this history entry could not be loaded (they might have been cleared or are missing).'
+                        '无法加载这条历史记录中的部分图片，可能已经被清理或丢失。'
                     );
                 } else {
                     setError(null);
@@ -916,8 +915,8 @@ export default function HomePage() {
     const handleClearHistory = React.useCallback(async () => {
         const confirmationMessage =
             effectiveStorageModeClient === 'indexeddb'
-                ? 'Are you sure you want to clear the entire image history? In IndexedDB mode, this will also permanently delete all stored images. This cannot be undone.'
-                : 'Are you sure you want to clear the entire image history? This cannot be undone.';
+                ? '确定要清空全部图片历史吗？在 IndexedDB 模式下，这也会永久删除所有已保存图片，且无法撤销。'
+                : '确定要清空全部图片历史吗？此操作无法撤销。';
 
         if (window.confirm(confirmationMessage)) {
             setHistory([]);
@@ -935,7 +934,7 @@ export default function HomePage() {
                 }
             } catch (e) {
                 console.error('Failed during history clearing:', e);
-                setError(`Failed to clear history: ${e instanceof Error ? e.message : String(e)}`);
+                setError(`清空历史失败：${e instanceof Error ? e.message : String(e)}`);
             }
         }
     }, []);
@@ -952,7 +951,7 @@ export default function HomePage() {
         }
 
         if (mode === 'edit' && editImageFiles.length >= MAX_EDIT_IMAGES) {
-            setError(`Cannot add more than ${MAX_EDIT_IMAGES} images to the edit form.`);
+            setError(`编辑表单最多只能添加 ${MAX_EDIT_IMAGES} 张图片。`);
             setIsSendingToEdit(false);
             return;
         }
@@ -967,19 +966,19 @@ export default function HomePage() {
                     blob = record.blob;
                     mimeType = blob.type || mimeType;
                 } else {
-                    throw new Error(`Image ${filename} not found in local database.`);
+                    throw new Error(`本地数据库中未找到图片 ${filename}。`);
                 }
             } else {
                 const response = await fetch(`/api/image/${filename}`);
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch image: ${response.statusText}`);
+                    throw new Error(`获取图片失败：${response.statusText}`);
                 }
                 blob = await response.blob();
                 mimeType = response.headers.get('Content-Type') || mimeType;
             }
 
             if (!blob) {
-                throw new Error(`Could not retrieve image data for ${filename}.`);
+                throw new Error(`无法读取图片 ${filename} 的数据。`);
             }
 
             const newFile = new File([blob], filename, { type: mimeType });
@@ -995,7 +994,7 @@ export default function HomePage() {
             }
         } catch (err: unknown) {
             console.error('Error sending image to edit:', err);
-            const errorMessage = err instanceof Error ? err.message : 'Failed to send image to edit form.';
+            const errorMessage = err instanceof Error ? err.message : '发送图片到编辑表单失败。';
             setError(errorMessage);
         } finally {
             setIsSendingToEdit(false);
@@ -1034,7 +1033,7 @@ export default function HomePage() {
 
                     const result = await response.json();
                     if (!response.ok) {
-                        throw new Error(result.error || `API deletion failed with status ${response.status}`);
+                        throw new Error(result.error || `API 删除失败，状态码：${response.status}`);
                     }
                 }
 
@@ -1044,7 +1043,7 @@ export default function HomePage() {
                 );
             } catch (e: unknown) {
                 console.error('Error during item deletion:', e);
-                setError(e instanceof Error ? e.message : 'An unexpected error occurred during deletion.');
+                setError(e instanceof Error ? e.message : '删除过程中发生未知错误。');
             } finally {
                 setItemToDeleteConfirm(null);
             }
@@ -1083,17 +1082,17 @@ export default function HomePage() {
                 onSave={handleSavePassword}
                 title={
                     passwordDialogContext === 'retry'
-                        ? 'Password Required'
+                        ? '需要密码'
                         : passwordDialogContext === 'settings'
-                          ? 'Unlock API Settings'
-                          : 'Configure Password'
+                          ? '解锁 API 设置'
+                          : '配置密码'
                 }
                 description={
                     passwordDialogContext === 'retry'
-                        ? 'The server requires a password, or the previous one was incorrect. Please enter it to continue.'
+                        ? '服务器需要密码，或上次输入的密码不正确。请输入密码后继续。'
                         : passwordDialogContext === 'settings'
-                          ? 'Enter the server password to view or change the runtime API settings.'
-                        : 'Set a password to use for API requests.'
+                          ? '请输入服务器密码以查看或修改运行时 API 设置。'
+                        : '设置用于 API 请求的密码。'
                 }
             />
             <RuntimeConfigDialog
@@ -1118,7 +1117,7 @@ export default function HomePage() {
                     <div>
                         <h1 className='text-2xl font-semibold text-white'>GPT Image Playground</h1>
                         <p className='mt-1 text-sm text-white/60'>
-                            Generate and edit images with runtime OpenAI API settings.
+                            使用运行时 OpenAI API 设置生成和编辑图片。
                         </p>
                     </div>
                     <Button
@@ -1128,7 +1127,7 @@ export default function HomePage() {
                         disabled={isLoadingRuntimeConfig}
                         className='border-white/20 bg-black text-white hover:bg-white/10 hover:text-white'>
                         <Settings2 className='h-4 w-4' />
-                        API Settings
+                        API 设置
                     </Button>
                 </div>
                 <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
@@ -1222,7 +1221,7 @@ export default function HomePage() {
                     <div className='flex h-[70vh] min-h-[600px] flex-col lg:col-span-1'>
                         {error && (
                             <Alert variant='destructive' className='mb-4 border-red-500/50 bg-red-900/20 text-red-300'>
-                                <AlertTitle className='text-red-200'>Error</AlertTitle>
+                                <AlertTitle className='text-red-200'>错误</AlertTitle>
                                 <AlertDescription>{error}</AlertDescription>
                             </Alert>
                         )}
@@ -1230,7 +1229,7 @@ export default function HomePage() {
                             imageBatch={latestImageBatch}
                             viewMode={imageOutputView}
                             onViewChange={setImageOutputView}
-                            altText='Generated image output'
+                            altText='生成的图片结果'
                             isLoading={isLoading || isSendingToEdit}
                             onSendToEdit={handleSendToEdit}
                             currentMode={mode}

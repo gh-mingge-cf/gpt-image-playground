@@ -1,237 +1,225 @@
-# <img src="./public/favicon.svg" alt="Project Logo" width="30" height="30" style="vertical-align: middle; margin-right: 8px;"> GPT Image Playground
+# <img src="./public/favicon.svg" alt="项目 Logo" width="30" height="30" style="vertical-align: middle; margin-right: 8px;"> GPT Image Playground
 
-A web-based playground to interact with OpenAI's GPT image models (`gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, and `gpt-image-1-mini`) for generating and editing images.
+一个基于 Web 的 OpenAI GPT 图片模型游乐场，支持使用 `gpt-image-2`、`gpt-image-1.5`、`gpt-image-1` 和 `gpt-image-1-mini` 进行生图与图片编辑。
 
-> **Note:** The playground defaults to `gpt-image-2`, OpenAI's latest GPT image model. It supports arbitrary resolutions up to 4K (with constraint validation) in addition to the legacy fixed sizes.
-
-<p align="center">
-  <img src="./readme-images/interface.jpg" alt="Interface" width="600"/>
-</p>
-
-## ✨ Features
-
-*   **🎨 Image Generation Mode:** Create new images from text prompts.
-*   **🖌️ Image Editing Mode:** Modify existing images based on text prompts and optional masks.
-*   **⚙️ Full API Parameter Control:** Access and adjust all relevant parameters supported by the OpenAI Images API directly through the UI (size, quality, output format, compression, background, moderation, number of images).
-*   **📐 Custom Resolutions (gpt-image-2):** Pick from 2K/4K presets or enter an arbitrary Width × Height with live validation against the model's constraints (multiples of 16, max 3840px per edge, ≤ 3:1 aspect ratio, 655,360 to 8,294,400 total pixels).
-*   **🎭 Integrated Masking Tool:** Easily create or upload masks directly within the editing mode to specify areas for modification. Draw directly on the image to generate a mask.
-
-     > ⚠️ Please note that `gpt-image-1`'s masking feature does not guarantee 100% control at this time. <br>1) [It's a known & acknowledged model limitation.](https://community.openai.com/t/gpt-image-1-problems-with-mask-edits/1240639/37) <br>2) [OpenAI are looking to address it in a future update.](https://community.openai.com/t/gpt-image-1-problems-with-mask-edits/1240639/41)
-<p align="center">
-  <img src="./readme-images/mask-creation.jpg" alt="Interface" width="350"/>
-</p>
-
-*   **📜 Detailed History & Cost Tracking:**
-    *   View a comprehensive history of all your image generations and edits.
-    *   See the parameters used for each request.
-    *   Get detailed API token usage and estimated cost breakdowns (`$USD`) for each operation. (hint: click the `$` amount on the image)
-    *   View the full prompt used for each history item.
-    *   View total historical API cost.
-    *   Delete items from history
+> **说明：** 当前默认模型为 `gpt-image-2`。除旧版固定尺寸外，还支持最高 4K 的任意分辨率输入，并内置约束校验。
 
 <p align="center">
-  <img src="./readme-images/history.jpg" alt="Interface" width="1306"/>
+  <img src="./readme-images/interface.jpg" alt="界面截图" width="600"/>
+</p>
+
+## ✨ 功能特性
+
+* **🎨 图片生成模式：** 根据文本提示生成新图片。
+* **🖌️ 图片编辑模式：** 基于文本提示和可选蒙版修改已有图片。
+* **⚙️ 完整 API 参数控制：** 可直接在 UI 中调整 OpenAI Images API 支持的主要参数，包括尺寸、质量、输出格式、压缩率、背景、审核等级和图片数量。
+* **📐 自定义分辨率（`gpt-image-2`）：** 可选择 2K / 4K 预设，也可以直接输入任意宽高，并实时校验模型约束，包括 16 的倍数、单边最大 3840px、长宽比不超过 3:1、总像素范围 655,360 到 8,294,400。
+* **🎭 内置蒙版工具：** 可在编辑模式里直接绘制或上传蒙版，精确指定需要修改的区域。
+
+> ⚠️ `gpt-image-1` 的蒙版编辑能力目前不能保证 100% 可控。<br>1. [这是已知且已被确认的模型限制。](https://community.openai.com/t/gpt-image-1-problems-with-mask-edits/1240639/37)<br>2. [OpenAI 计划在后续更新中改进。](https://community.openai.com/t/gpt-image-1-problems-with-mask-edits/1240639/41)
+
+<p align="center">
+  <img src="./readme-images/mask-creation.jpg" alt="蒙版编辑界面" width="350"/>
+</p>
+
+* **📜 历史记录与成本追踪：**
+* 可查看所有生成与编辑历史。
+* 可查看每次请求所使用的参数。
+* 可查看详细的 token 用量和预估成本（美元）。提示：点击图片上的 `$` 金额即可查看。
+* 可查看每条历史使用的完整提示词。
+* 可查看历史总成本。
+* 可删除历史项。
+* **🖼️ 灵活的结果查看方式：** 支持网格查看整批结果，也可切换到单图查看。
+* **🚀 发送到编辑：** 可将刚生成的图片或历史记录中的图片一键发送到编辑表单。
+* **📋 粘贴到编辑：** 支持从剪贴板直接粘贴图片到编辑模式的源图区域。
+* **🔐 运行时 API 设置：** 无需重启应用，可直接在 UI 中修改服务端使用的 OpenAI API Key 和 Base URL，新请求会立即生效。
+* **💾 存储模式：** 通过 `NEXT_PUBLIC_IMAGE_STORAGE_MODE` 支持两种模式：
+* **文件系统（默认）：** 图片保存在服务端 `./generated-images`。
+* **IndexedDB：** 图片直接保存在浏览器的 IndexedDB，适合无持久化磁盘的部署环境。
+* 历史记录元数据始终保存在浏览器本地存储中。
+
+<p align="center">
+  <img src="./readme-images/history.jpg" alt="历史记录界面" width="1306"/>
 </p>
 
 <p align="center">
-  <img src="./readme-images/cost-breakdown.jpg" alt="Interface" width="350"/>
+  <img src="./readme-images/cost-breakdown.jpg" alt="成本明细界面" width="350"/>
 </p>
 
-*   **🖼️ Flexible Image Output View:** View generated image batches as a grid or select individual images for a closer look.
-*   **🚀 Send to Edit:** Quickly send any generated or history image directly to the editing form.
-*   **📋 Paste to Edit:** Paste images directly from your clipboard into the Edit mode's source image area.
-*   **🔐 Runtime API Settings:** Change the server-side OpenAI API key and base URL from the UI without restarting the app. New requests use the updated settings immediately.
-*   **💾 Storage:** Supports two modes via `NEXT_PUBLIC_IMAGE_STORAGE_MODE`:
-    *   **Filesystem (default):** Images saved to `./generated-images` on the server.
-    *   **IndexedDB:** Images saved directly in the browser's IndexedDB (ideal for serverless deployments).
-    *   Generation history metadata is always saved in the browser's local storage.
+## ▲ 部署到 Vercel
 
-## ▲ Deploy to Vercel
+⚠️ 如果你从 `main` 或 `master` 分支部署，Vercel 站点会对任何拿到 URL 的人公开可访问。如果从其他分支部署，通常需要登录到对应 Vercel 团队后才能访问预览环境。
 
-🚨 *CAUTION: If you deploy from `main` or `master` branch, your Vercel deployment will be **publicly available** to anyone who has the URL. Deploying from other branches will require users to be logged into Vercel (on your team) to access the preview build.* 🚨
-
-You can deploy your own instance of this playground to Vercel with one click:
+你可以一键部署自己的实例：
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/alasano/gpt-image-1-playground&env=OPENAI_API_KEY,NEXT_PUBLIC_IMAGE_STORAGE_MODE,APP_PASSWORD&envDescription=OpenAI%20API%20Key%20is%20required.%20Set%20storage%20mode%20to%20indexeddb%20for%20Vercel%20deployments.&project-name=gpt-image-playground&repository-name=gpt-image-playground)
 
-You will be prompted to enter your `OPENAI_API_KEY` and `APP_PASSWORD` during the deployment setup. For Vercel deployments, it's required to set `NEXT_PUBLIC_IMAGE_STORAGE_MODE` to `indexeddb`. 
+部署时会要求填写 `OPENAI_API_KEY` 和 `APP_PASSWORD`。在 Vercel 上必须将 `NEXT_PUBLIC_IMAGE_STORAGE_MODE` 设置为 `indexeddb`。
 
-> **Important:** The runtime API settings UI stores overrides on the server filesystem. That works well on Docker, a VM, or a persistent disk, but it is **not a durable configuration mechanism on Vercel** or other ephemeral serverless hosts. On Vercel, prefer environment variables.
+> **重要：** 运行时 API 设置会将覆盖配置保存到服务器文件系统。这种方式适合 Docker、虚拟机或带持久磁盘的主机，但 **不适合作为 Vercel 等无状态 Serverless 环境的持久配置方案**。在 Vercel 上优先使用环境变量。
 
-Note: If `NEXT_PUBLIC_IMAGE_STORAGE_MODE` is not set, the application will automatically detect if it's running on Vercel (using the `VERCEL` or `NEXT_PUBLIC_VERCEL_ENV` environment variables) and default to `indexeddb` mode in that case. Otherwise (e.g., running locally), it defaults to `fs` mode. You can always explicitly set the variable to `fs` or `indexeddb` to override this automatic behavior.
+说明：如果未设置 `NEXT_PUBLIC_IMAGE_STORAGE_MODE`，应用会自动检测当前是否运行在 Vercel（通过 `VERCEL` 或 `NEXT_PUBLIC_VERCEL_ENV`），如果是则默认使用 `indexeddb`，否则默认使用 `fs`。你也可以显式设置为 `fs` 或 `indexeddb` 覆盖自动判断。
 
-## 🐳 Docker Deployment
+## 🐳 Docker 部署
 
-This repository includes a `Dockerfile` and `docker-compose.yml` for a persistent self-hosted deployment.
+仓库内已包含 `Dockerfile` 和 `docker-compose.yml`，适合自托管并持久化运行。
 
-### 1. Create `.env`
+### 1. 创建 `.env`
 
-`OPENAI_API_KEY` is now optional at startup. You can set it here, or leave it unset and configure it later from the **API Settings** button in the UI.
+`OPENAI_API_KEY` 启动时已经不是必填项。你可以先写在环境变量里，也可以留空，稍后通过界面右上角的 **API 设置** 动态配置。
 
 ```dotenv
 NEXT_PUBLIC_IMAGE_STORAGE_MODE=fs
 APP_PASSWORD=change-me
 
-# Optional defaults
+# 可选默认值
 # OPENAI_API_KEY=sk-...
 # OPENAI_API_BASE_URL=https://your-openai-compatible-endpoint/v1
 ```
 
-If you expose this UI beyond a private LAN, setting `APP_PASSWORD` is strongly recommended.
+如果这个界面会暴露到局域网之外，强烈建议设置 `APP_PASSWORD`。
 
-### 2. Start the container
+### 2. 启动容器
 
 ```bash
 docker compose up -d --build
 docker compose logs -f
 ```
 
-Then open `http://localhost:3000`.
+然后访问 `http://localhost:3000`。
 
-### 3. Configure or rotate the API key from the UI
+### 3. 在界面中配置或轮换 API Key
 
-1. Click **API Settings** in the top-right corner.
-2. If `APP_PASSWORD` is set, enter that password first.
-3. Paste a new API key into **New API key** and click **Save**.
-4. New image requests will use the updated key immediately. No container restart is required.
+1. 点击右上角 **API 设置**。
+2. 如果设置了 `APP_PASSWORD`，先输入密码。
+3. 将新的 API Key 粘贴到 **新 API Key** 输入框并点击 **保存**。
+4. 后续图片请求会立即使用新 Key，无需重启容器。
 
-The runtime settings are persisted in `/app/data/runtime-config.json`, which `docker-compose.yml` stores in the `gpt-image-config` Docker volume.
+运行时设置会持久化到 `/app/data/runtime-config.json`，而 `docker-compose.yml` 已将其挂载到 `gpt-image-config` Docker 卷中。
 
-### Runtime override behavior
+### 运行时覆盖规则
 
-*   A saved runtime API key overrides `OPENAI_API_KEY`.
-*   A saved runtime base URL overrides `OPENAI_API_BASE_URL`.
-*   **Clear Saved API Key** removes only the runtime API key override.
-*   **Reset Runtime Overrides** deletes all saved runtime overrides and falls back to environment variables again.
+* 已保存的运行时 API Key 会覆盖 `OPENAI_API_KEY`。
+* 已保存的运行时 Base URL 会覆盖 `OPENAI_API_BASE_URL`。
+* **清除已保存的 API Key** 只会移除运行时 API Key 覆盖，不会影响 Base URL。
+* **重置运行时覆盖** 会清除所有运行时覆盖并回退到环境变量。
 
-## 🚀 Getting Started [Local Deployment]
+## 🚀 本地运行
 
-Follow these steps to get the playground running locally.
+### 前置要求
 
-### Prerequisites
+* [Node.js](https://nodejs.org/) 20 或更高版本
+* [npm](https://www.npmjs.com/)、[yarn](https://yarnpkg.com/)、[pnpm](https://pnpm.io/) 或 [bun](https://bun.sh/)
 
-*   [Node.js](https://nodejs.org/) (Version 20 or later required)
-*   [npm](https://www.npmjs.com/), [yarn](https://yarnpkg.com/), [pnpm](https://pnpm.io/), or [bun](https://bun.sh/)
+### 1. 配置环境变量
 
-### 1. Configure Environment 🟢
+你可以在启动前先配置 API Key，也可以启动后再从界面里配置。
 
-You can provide an API key up front via environment variables, or configure it later from the UI.
+⚠️ [使用 GPT Image 模型前，你的 OpenAI Organization 需要完成验证](https://help.openai.com/en/articles/10910291-api-organization-verification)
 
-⚠️ [Your OpenAI Organization needs to be verified to use GPT Image models](https://help.openai.com/en/articles/10910291-api-organization-verification)
+1. 如果还没有 `.env.local`，先创建它。
+2. 按需加入以下变量：
 
-1.  If you don't have a `.env.local` file, create one.
-2.  Add any environment variables you want to use:
+```dotenv
+# 启动时可选，也可以稍后在 API 设置中填写
+OPENAI_API_KEY=your_openai_api_key_here
 
-    ```dotenv
-    # Optional at startup; can also be set later in API Settings
-    OPENAI_API_KEY=your_openai_api_key_here
+# 可选，兼容 OpenAI 协议的接口地址
+OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
 
-    # Optional OpenAI-compatible endpoint
-    OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
+# 建议开启，用于保护界面和运行时配置
+APP_PASSWORD=your_password_here
+```
 
-    # Recommended if you want to protect the UI and runtime settings
-    APP_PASSWORD=your_password_here
-    ```
+`OPENAI_API_KEY` 涉及敏感凭证，`.env.local` 默认已在 `.gitignore` 中，避免误提交。
 
-    **Important:** Keep your API key secret. The `.env.local` file is included in `.gitignore` by default to prevent accidental commits.
+3. 如果你不想把 Key 放在 `.env.local`，可以留空 `OPENAI_API_KEY`，等应用启动后再通过 **API 设置** 添加。
 
-3.  If you prefer not to keep a key in `.env.local`, leave `OPENAI_API_KEY` unset and add it after startup from the **API Settings** button in the UI.
+#### 可选：启用 IndexedDB 模式
 
----
-
-#### 🟡 (Optional) IndexedDB Mode (for serverless hosts) [e.g. Vercel]
-
-For environments where the filesystem is read-only or ephemeral (like Vercel serverless functions), you can configure the application to store generated images directly in the browser's IndexedDB using Dexie.js.
-
-Set the following environment variable in your `.env.local` file or directly in your hosting provider's UI (like Vercel):
+如果部署环境的文件系统只读，或者像 Vercel 一样是临时文件系统，可以改为把图片直接存到浏览器 IndexedDB：
 
 ```dotenv
 NEXT_PUBLIC_IMAGE_STORAGE_MODE=indexeddb
 ```
 
-When this variable is set to `indexeddb`:
-*   The server API (`/api/images`) will return the image data as base64 (`b64_json`) instead of saving it to disk.
-*   The client-side application will decode the base64 data and store the image blob in IndexedDB.
-*   Images will be served directly from the browser's storage using Blob URLs.
+设置为 `indexeddb` 后：
 
-If this variable is **not set** or has any other value, the application defaults to the standard behavior of saving images to the `./generated-images` directory on the server's filesystem.
+* 服务端 `/api/images` 会返回 base64 格式的图片数据 `b64_json`，而不是写入磁盘。
+* 前端会将其解码后保存到 IndexedDB。
+* 图片通过浏览器本地 Blob URL 提供访问。
 
-**Note:** If `NEXT_PUBLIC_IMAGE_STORAGE_MODE` is not set, the application will automatically detect if it's running on Vercel (using the `VERCEL` or `NEXT_PUBLIC_VERCEL_ENV` environment variables) and default to `indexeddb` mode in that case. Otherwise (e.g., running locally), it defaults to `fs` mode. You can always explicitly set the variable to `fs` or `indexeddb` to override this automatic behavior.
+如果未设置该变量，或设置成其他值，应用会默认把图片保存到服务端 `./generated-images` 目录。
 
-#### 🟡 (Optional) Use a Custom API Endpoint
+说明：如果未设置 `NEXT_PUBLIC_IMAGE_STORAGE_MODE`，应用会自动检测当前是否运行在 Vercel（通过 `VERCEL` 或 `NEXT_PUBLIC_VERCEL_ENV`），如果是则默认使用 `indexeddb`，否则默认使用 `fs`。你也可以显式设置为 `fs` 或 `indexeddb` 覆盖自动判断。
 
-If you need to use an OpenAI-compatible API endpoint (e.g., a local model server or a different provider), you can specify its base URL using the `OPENAI_API_BASE_URL` environment variable in your `.env.local` file:
+#### 可选：使用自定义 API 端点
+
+如果你需要接入兼容 OpenAI 协议的接口，例如本地模型服务或其他供应商，可以通过 `OPENAI_API_BASE_URL` 指定：
 
 ```dotenv
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
 ```
 
-If `OPENAI_API_BASE_URL` is not set, the application will default to the standard OpenAI API endpoint.
+如果未设置 `OPENAI_API_BASE_URL`，应用默认使用 OpenAI 官方 API 端点。
 
----
+#### 可选：通过界面修改运行时 API 设置
 
-#### 🟡 (Optional) Runtime API Settings via the UI
+右上角的 **API 设置** 支持在不重启应用的情况下保存运行时 API Key 和 Base URL。
 
-The **API Settings** button in the top-right corner lets you save a runtime API key and base URL without restarting the app.
+* **新 API Key** 留空时，会保留当前 Key。
+* 清空 **Base URL** 后再保存，会回退到 `OPENAI_API_BASE_URL` 或 OpenAI 默认端点。
+* **重置运行时覆盖** 会删除保存的运行时配置文件，并重新回退到环境变量。
 
-*   Leaving the **New API key** field blank keeps the current key unchanged.
-*   Clearing the **Base URL** field and saving falls back to `OPENAI_API_BASE_URL` or the OpenAI default endpoint.
-*   **Reset Runtime Overrides** deletes the saved runtime config file and returns to environment variables.
+本地运行时，这些设置会存储在 `./data/runtime-config.json`。
 
-Runtime settings are stored in `./data/runtime-config.json` for local runs.
+#### 可选：启用密码验证
 
----
-
-
-#### 🟡 (Optional) Enable Password Validation
 ```dotenv
 APP_PASSWORD=your_password_here
 ```
-When `APP_PASSWORD` is set, the frontend will prompt you for a password to authenticate requests and to open the runtime API settings dialog.
+
+设置 `APP_PASSWORD` 后，前端会在发起请求和打开运行时 API 设置时要求输入密码。
+
 <p align="center">
-  <img src="./readme-images/password-dialog.jpg" alt="Password Dialog" width="460"/>
+  <img src="./readme-images/password-dialog.jpg" alt="密码弹窗" width="460"/>
 </p>
 
----
-
-### 2. Install Dependencies 🟢
-
-Navigate to the project directory in your terminal and install the necessary packages:
+### 2. 安装依赖
 
 ```bash
 npm install
-# or
+# 或
 # yarn install
-# or
+# 或
 # pnpm install
-# or
+# 或
 # bun install
 ```
 
-### 3. Run the Development Server 🟢
-
-Start the Next.js development server:
+### 3. 启动开发服务器
 
 ```bash
 npm run dev
-# or
+# 或
 # yarn dev
-# or
+# 或
 # pnpm dev
-# or
+# 或
 # bun dev
 ```
 
-### 4. Open the Playground 🟢
+### 4. 打开应用
 
-Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use GPT Image Playground.
-If you did not set `OPENAI_API_KEY` in `.env.local`, click **API Settings** and add it there before generating images.
+浏览器访问 [http://localhost:3000](http://localhost:3000)。
 
-## 🤝 Contributing
+如果你没有在 `.env.local` 中配置 `OPENAI_API_KEY`，先点击 **API 设置** 补上，再开始生成图片。
 
-Contributions are welcome! Issues and feature requests, not as much welcome but I'll think about it.
+## 🤝 贡献
 
-## 📄 License
+欢迎提交代码贡献。`issue` 和功能请求也可以提，但作者是否接受要看具体内容。
+
+## 📄 许可证
 
 MIT

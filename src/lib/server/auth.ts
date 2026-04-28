@@ -14,12 +14,12 @@ export function validatePasswordHash(passwordHash: string | null | undefined): s
     }
 
     if (!passwordHash) {
-        return 'Unauthorized: Missing password hash.';
+        return '未授权：缺少密码哈希。';
     }
 
     const expectedHash = sha256(process.env.APP_PASSWORD!);
     if (passwordHash !== expectedHash) {
-        return 'Unauthorized: Invalid password.';
+        return '未授权：密码无效。';
     }
 
     return null;

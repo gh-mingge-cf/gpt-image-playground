@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         const tempBodyForAuth = await clonedRequest.json();
 
         if (typeof tempBodyForAuth !== 'object' || tempBodyForAuth === null || Array.isArray(tempBodyForAuth)) {
-            return NextResponse.json({ error: 'Invalid request body: Must be a JSON object.' }, { status: 400 });
+            return NextResponse.json({ error: '请求体无效：必须是 JSON 对象。' }, { status: 400 });
         }
 
         const authError = validatePasswordHash(tempBodyForAuth.passwordHash as string | null);
@@ -38,17 +38,17 @@ export async function POST(request: NextRequest) {
         requestBody = await request.json();
     } catch (e) {
         console.error('Error parsing request body for /api/image-delete:', e);
-        return NextResponse.json({ error: 'Invalid request body: Must be JSON.' }, { status: 400 });
+        return NextResponse.json({ error: '请求体无效：必须是 JSON。' }, { status: 400 });
     }
 
     const { filenames } = requestBody;
 
     if (!Array.isArray(filenames) || filenames.some((fn) => typeof fn !== 'string')) {
-        return NextResponse.json({ error: 'Invalid filenames: Must be an array of strings.' }, { status: 400 });
+        return NextResponse.json({ error: '文件名参数无效：必须是字符串数组。' }, { status: 400 });
     }
 
     if (filenames.length === 0) {
-        return NextResponse.json({ message: 'No filenames provided to delete.', results: [] }, { status: 200 });
+        return NextResponse.json({ message: '没有需要删除的文件名。', results: [] }, { status: 200 });
     }
 
     const deletionResults: FileDeletionResult[] = [];
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     for (const filename of filenames) {
         if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
             console.warn(`Invalid filename for deletion: ${filename}`);
-            deletionResults.push({ filename, success: false, error: 'Invalid filename format.' });
+            deletionResults.push({ filename, success: false, error: '文件名格式无效。' });
             continue;
         }
 
@@ -69,9 +69,9 @@ export async function POST(request: NextRequest) {
         } catch (error: unknown) {
             console.error(`Error deleting image ${filepath}:`, error);
             if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
-                deletionResults.push({ filename, success: false, error: 'File not found.' });
+                deletionResults.push({ filename, success: false, error: '文件不存在。' });
             } else {
-                deletionResults.push({ filename, success: false, error: 'Failed to delete file.' });
+                deletionResults.push({ filename, success: false, error: '删除文件失败。' });
             }
         }
     }
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
         {
-            message: allSucceeded ? 'All files deleted successfully.' : 'Some files could not be deleted.',
+            message: allSucceeded ? '所有文件均已删除。' : '部分文件删除失败。',
             results: deletionResults
         },
         { status: allSucceeded ? 200 : 207 } // 207 Multi-Status if some failed

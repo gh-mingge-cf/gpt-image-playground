@@ -62,7 +62,14 @@
 
 ## 🐳 Docker 部署
 
-仓库内已包含 `Dockerfile` 和 `docker-compose.yml`，适合自托管并持久化运行。
+仓库内已包含一个**不打包项目源码**的轻量基础镜像方案，适合自托管并频繁更新代码。
+
+这套 Docker 方案的职责划分如下：
+
+* 镜像只提供固定的 Node.js 运行环境和启动脚本。
+* 项目源码通过 `docker-compose.yml` 里的 bind mount 挂载到容器 `/app`。
+* `node_modules`、`.next`、`generated-images`、`data` 分别使用独立 volume 持久化。
+* 日常修改代码后，不需要重新构建镜像，只需要重启容器，入口脚本会自动判断是否需要重新安装依赖或重新构建 Next.js。
 
 ### 1. 创建 `.env`
 
@@ -86,7 +93,21 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-然后访问 `http://localhost:3000`。
+首次启动建议带 `--build`，因为需要先构建一次基础镜像。然后访问 `http://localhost:3000`。
+
+后续如果你只是修改了项目源码，通常只需要：
+
+```bash
+docker compose restart
+```
+
+或者：
+
+```bash
+docker compose up -d
+```
+
+不需要重新执行 `docker compose build`。
 
 ### 3. 在界面中配置或轮换 API Key
 
@@ -103,6 +124,19 @@ docker compose logs -f
 * 已保存的运行时 Base URL 会覆盖 `OPENAI_API_BASE_URL`。
 * **清除已保存的 API Key** 只会移除运行时 API Key 覆盖，不会影响 Base URL。
 * **重置运行时覆盖** 会清除所有运行时覆盖并回退到环境变量。
+
+### 更新机制说明
+
+容器启动时会自动做两件事：
+
+* 如果 `package-lock.json` 发生变化，或者 `node_modules` 不存在，会自动执行 `npm ci --include=dev`。
+* 如果源码、`package.json`、`package-lock.json`、`next.config.ts`、`tsconfig.json`、`postcss.config.mjs` 比当前 `.next` 构建产物更新，会自动执行 `npm run build`。
+
+因此：
+
+* 改业务代码后，重启容器即可。
+* 改依赖后，重启容器也即可，入口脚本会自动重新安装依赖。
+* 只有当你修改了基础镜像本身，例如 `Dockerfile` 或 `docker/entrypoint.sh`，才需要重新执行 `docker compose build`。
 
 ## 🚀 本地运行
 

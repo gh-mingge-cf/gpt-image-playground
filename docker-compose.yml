@@ -3,7 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: gpt-image-playground-base:latest
     container_name: gpt-image-playground
+    working_dir: /app
     ports:
       - "3000:3000"
     env_file:
@@ -11,11 +13,17 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      HOSTNAME: 0.0.0.0
     volumes:
+      - ./:/app
+      - gpt-image-node-modules:/app/node_modules
+      - gpt-image-next:/app/.next
       - gpt-image-data:/app/generated-images
       - gpt-image-config:/app/data
     restart: unless-stopped
 
 volumes:
+  gpt-image-node-modules:
+  gpt-image-next:
   gpt-image-data:
   gpt-image-config:

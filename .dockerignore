@@ -1,6 +1,5 @@
-node_modules
-.next
-generated-images
-.git
-.env
-.env.*
+*
+!Dockerfile
+!.dockerignore
+!docker/
+!docker/entrypoint.sh

@@ -5,6 +5,7 @@ import { getModelRates, type GptImageModel } from '@/lib/cost-utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ImagePreviewDialog, type ImagePreviewItem } from '@/components/image-preview-dialog';
 import {
     Dialog,
     DialogContent,
@@ -75,6 +76,23 @@ const formatSettingValue = (value: string | undefined): string => {
     }
 };
 
+const formatResolution = (images: HistoryMetadata['images']): string => {
+    const imageDimensions = images
+        .filter((image) => image.width && image.height)
+        .map((image) => `${image.width} x ${image.height}`);
+
+    if (imageDimensions.length === 0) {
+        return '未知';
+    }
+
+    const uniqueDimensions = Array.from(new Set(imageDimensions));
+    if (uniqueDimensions.length === 1) {
+        return uniqueDimensions[0];
+    }
+
+    return `${uniqueDimensions[0]} 等 ${uniqueDimensions.length} 种`;
+};
+
 function HistoryPanelImpl({
     history,
     onSelectImage,
@@ -91,6 +109,9 @@ function HistoryPanelImpl({
     const [openCostDialogTimestamp, setOpenCostDialogTimestamp] = React.useState<number | null>(null);
     const [isTotalCostDialogOpen, setIsTotalCostDialogOpen] = React.useState(false);
     const [copiedTimestamp, setCopiedTimestamp] = React.useState<number | null>(null);
+    const [previewImages, setPreviewImages] = React.useState<ImagePreviewItem[]>([]);
+    const [previewInitialIndex, setPreviewInitialIndex] = React.useState(0);
+    const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
 
     const { totalCost, totalImages } = React.useMemo(() => {
         let cost = 0;
@@ -118,8 +139,45 @@ function HistoryPanelImpl({
         }
     };
 
+    const openImagePreview = (item: HistoryMetadata, initialIndex = 0) => {
+        const originalStorageMode = item.storageModeUsed || 'fs';
+        const images = item.images.reduce<ImagePreviewItem[]>((previewItems, image) => {
+            const path =
+                originalStorageMode === 'indexeddb' ? getImageSrc(image.filename) : `/api/image/${image.filename}`;
+
+            if (!path) {
+                return previewItems;
+            }
+
+            previewItems.push({
+                path,
+                filename: image.filename,
+                ...(typeof image.width === 'number' && typeof image.height === 'number'
+                    ? { width: image.width, height: image.height }
+                    : {})
+            });
+
+            return previewItems;
+        }, []);
+
+        if (images.length === 0) {
+            return;
+        }
+
+        setPreviewImages(images);
+        setPreviewInitialIndex(Math.min(Math.max(initialIndex, 0), images.length - 1));
+        setIsPreviewOpen(true);
+    };
+
     return (
         <Card className='flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-black'>
+            <ImagePreviewDialog
+                images={previewImages}
+                initialIndex={previewInitialIndex}
+                isOpen={isPreviewOpen}
+                onOpenChange={setIsPreviewOpen}
+            />
+
             <CardHeader className='flex flex-row items-center justify-between gap-4 border-b border-white/10 px-4 py-3'>
                 <div className='flex items-center gap-2'>
                     <CardTitle className='text-lg font-medium text-white'>历史记录</CardTitle>
@@ -232,6 +290,11 @@ function HistoryPanelImpl({
                                     <div className='group relative'>
                                         <button
                                             onClick={() => onSelectImage(item)}
+                                            onDoubleClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                openImagePreview(item);
+                                            }}
                                             className='relative block aspect-square w-full overflow-hidden rounded-t-md border border-white/20 transition-all duration-150 group-hover:border-white/40 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black focus:outline-none'
                                             aria-label={`查看 ${new Date(item.timestamp).toLocaleString()} 的图片批次`}>
                                             {thumbnailUrl ? (
@@ -404,6 +467,10 @@ function HistoryPanelImpl({
                                         <p>
                                             <span className='font-medium text-white/80'>模型：</span>{' '}
                                             {item.model || 'gpt-image-1'}
+                                        </p>
+                                        <p>
+                                            <span className='font-medium text-white/80'>分辨率：</span>{' '}
+                                            {formatResolution(item.images)}
                                         </p>
                                         <p>
                                             <span className='font-medium text-white/80'>质量：</span>{' '}

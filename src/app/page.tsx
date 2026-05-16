@@ -21,6 +21,8 @@ import * as React from 'react';
 
 type HistoryImage = {
     filename: string;
+    width?: number;
+    height?: number;
 };
 
 export type HistoryMetadata = {
@@ -71,11 +73,20 @@ type ApiImageResponseItem = {
     b64_json?: string;
     output_format: string;
     path?: string;
+    width?: number;
+    height?: number;
 };
 
 type RuntimeConfigDialogResponse = RuntimeConfigDialogStatus & {
     savedProfileId?: string;
     error?: string;
+};
+
+type DisplayImage = {
+    path: string;
+    filename: string;
+    width?: number;
+    height?: number;
 };
 
 export default function HomePage() {
@@ -85,7 +96,7 @@ export default function HomePage() {
     const [isLoading, setIsLoading] = React.useState(false);
     const [isSendingToEdit, setIsSendingToEdit] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
-    const [latestImageBatch, setLatestImageBatch] = React.useState<{ path: string; filename: string }[] | null>(null);
+    const [latestImageBatch, setLatestImageBatch] = React.useState<DisplayImage[] | null>(null);
     const [imageOutputView, setImageOutputView] = React.useState<'grid' | number>('grid');
     const [history, setHistory] = React.useState<HistoryMetadata[]>([]);
     const [isInitialLoad, setIsInitialLoad] = React.useState(true);
@@ -857,8 +868,10 @@ export default function HomePage() {
                                         const batchTimestamp = Date.now();
                                         const newHistoryEntry: HistoryMetadata = {
                                             timestamp: batchTimestamp,
-                                            images: event.images.map((img: { filename: string }) => ({
-                                                filename: img.filename
+                                            images: event.images.map((img: ApiImageResponseItem) => ({
+                                                filename: img.filename,
+                                                width: img.width,
+                                                height: img.height
                                             })),
                                             storageModeUsed: effectiveStorageModeClient,
                                             durationMs: durationMs,
@@ -872,8 +885,7 @@ export default function HomePage() {
                                             model: currentModel
                                         };
 
-                                        let newImageBatchPromises: Promise<{ path: string; filename: string } | null>[] =
-                                            [];
+                                        let newImageBatchPromises: Promise<DisplayImage | null>[] = [];
                                         if (effectiveStorageModeClient === 'indexeddb') {
                                             newImageBatchPromises = event.images.map(async (img: ApiImageResponseItem) => {
                                                 if (img.b64_json) {
@@ -893,7 +905,12 @@ export default function HomePage() {
                                                         const blobUrl = URL.createObjectURL(blob);
                                                         blobUrlCacheRef.current.set(img.filename, blobUrl);
 
-                                                        return { filename: img.filename, path: blobUrl };
+                                                        return {
+                                                            filename: img.filename,
+                                                            path: blobUrl,
+                                                            width: img.width,
+                                                            height: img.height
+                                                        };
                                                     } catch (dbError) {
                                                         console.error(
                                                             `Error saving blob ${img.filename} to IndexedDB:`,
@@ -913,17 +930,16 @@ export default function HomePage() {
                                                 .map((img: ApiImageResponseItem) =>
                                                     Promise.resolve({
                                                         path: img.path!,
-                                                        filename: img.filename
+                                                        filename: img.filename,
+                                                        width: img.width,
+                                                        height: img.height
                                                     })
                                                 );
                                         }
 
                                         const processedImages = (await Promise.all(newImageBatchPromises)).filter(
                                             Boolean
-                                        ) as {
-                                            path: string;
-                                            filename: string;
-                                        }[];
+                                        ) as DisplayImage[];
 
                                         setLatestImageBatch(processedImages);
                                         setImageOutputView(processedImages.length > 1 ? 'grid' : 0);
@@ -986,7 +1002,11 @@ export default function HomePage() {
                 const batchTimestamp = Date.now();
                 const newHistoryEntry: HistoryMetadata = {
                     timestamp: batchTimestamp,
-                    images: result.images.map((img: { filename: string }) => ({ filename: img.filename })),
+                    images: result.images.map((img: ApiImageResponseItem) => ({
+                        filename: img.filename,
+                        width: img.width,
+                        height: img.height
+                    })),
                     storageModeUsed: effectiveStorageModeClient,
                     durationMs: durationMs,
                     quality: historyQuality,
@@ -999,7 +1019,7 @@ export default function HomePage() {
                     model: currentModel
                 };
 
-                let newImageBatchPromises: Promise<{ path: string; filename: string } | null>[] = [];
+                let newImageBatchPromises: Promise<DisplayImage | null>[] = [];
                 if (effectiveStorageModeClient === 'indexeddb') {
                     newImageBatchPromises = result.images.map(async (img: ApiImageResponseItem) => {
                         if (img.b64_json) {
@@ -1019,7 +1039,12 @@ export default function HomePage() {
                                 const blobUrl = URL.createObjectURL(blob);
                                 blobUrlCacheRef.current.set(img.filename, blobUrl);
 
-                                return { filename: img.filename, path: blobUrl };
+                                return {
+                                    filename: img.filename,
+                                    path: blobUrl,
+                                    width: img.width,
+                                    height: img.height
+                                };
                             } catch (dbError) {
                                 console.error(`Error saving blob ${img.filename} to IndexedDB:`, dbError);
                                 setError(`保存图片 ${img.filename} 到本地数据库失败。`);
@@ -1036,15 +1061,14 @@ export default function HomePage() {
                         .map((img: ApiImageResponseItem) =>
                             Promise.resolve({
                                 path: img.path!,
-                                filename: img.filename
+                                filename: img.filename,
+                                width: img.width,
+                                height: img.height
                             })
                         );
                 }
 
-                const processedImages = (await Promise.all(newImageBatchPromises)).filter(Boolean) as {
-                    path: string;
-                    filename: string;
-                }[];
+                const processedImages = (await Promise.all(newImageBatchPromises)).filter(Boolean) as DisplayImage[];
 
                 setLatestImageBatch(processedImages);
                 setImageOutputView(processedImages.length > 1 ? 'grid' : 0);
@@ -1080,7 +1104,12 @@ export default function HomePage() {
                 }
 
                 if (path) {
-                    return { path, filename: imgInfo.filename };
+                    return {
+                        path,
+                        filename: imgInfo.filename,
+                        width: imgInfo.width,
+                        height: imgInfo.height
+                    };
                 } else {
                     console.warn(
                         `Could not get image source for history item: ${imgInfo.filename} (mode: ${originalStorageMode})`
@@ -1091,7 +1120,7 @@ export default function HomePage() {
             });
 
             Promise.all(selectedBatchPromises).then((resolvedBatch) => {
-                const validImages = resolvedBatch.filter(Boolean) as { path: string; filename: string }[];
+                const validImages = resolvedBatch.filter(Boolean) as DisplayImage[];
 
                 if (validImages.length !== item.images.length) {
                     setError(

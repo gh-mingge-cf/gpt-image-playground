@@ -14,14 +14,23 @@ type StreamingEvent = {
     filename?: string;
     path?: string;
     output_format?: string;
+    width?: number;
+    height?: number;
     usage?: OpenAI.Images.ImagesResponse['usage'];
     images?: Array<{
         filename: string;
         b64_json: string;
         path?: string;
         output_format: string;
+        width?: number;
+        height?: number;
     }>;
     error?: string;
+};
+
+type ImageDimensions = {
+    width: number;
+    height: number;
 };
 
 const outputDir = path.resolve(process.cwd(), 'generated-images');
@@ -42,6 +51,131 @@ function validateOutputFormat(format: unknown): ValidOutputFormat {
     }
 
     return 'png'; // default fallback
+}
+
+function readUInt24LE(buffer: Buffer, offset: number): number {
+    return buffer[offset] + (buffer[offset + 1] << 8) + (buffer[offset + 2] << 16);
+}
+
+function getPngDimensions(buffer: Buffer): ImageDimensions | null {
+    if (
+        buffer.length < 24 ||
+        buffer[0] !== 0x89 ||
+        buffer[1] !== 0x50 ||
+        buffer[2] !== 0x4e ||
+        buffer[3] !== 0x47
+    ) {
+        return null;
+    }
+
+    return {
+        width: buffer.readUInt32BE(16),
+        height: buffer.readUInt32BE(20)
+    };
+}
+
+function getJpegDimensions(buffer: Buffer): ImageDimensions | null {
+    if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+        return null;
+    }
+
+    let offset = 2;
+    const sofMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+
+    while (offset < buffer.length) {
+        if (buffer[offset] !== 0xff) {
+            offset++;
+            continue;
+        }
+
+        while (buffer[offset] === 0xff) {
+            offset++;
+        }
+
+        const marker = buffer[offset];
+        offset++;
+
+        if (marker === 0xd9 || marker === 0xda) {
+            break;
+        }
+
+        if (offset + 2 > buffer.length) {
+            break;
+        }
+
+        const segmentLength = buffer.readUInt16BE(offset);
+        offset += 2;
+
+        if (segmentLength < 2 || offset + segmentLength - 2 > buffer.length) {
+            break;
+        }
+
+        if (sofMarkers.has(marker) && offset + 5 <= buffer.length) {
+            return {
+                height: buffer.readUInt16BE(offset + 1),
+                width: buffer.readUInt16BE(offset + 3)
+            };
+        }
+
+        offset += segmentLength - 2;
+    }
+
+    return null;
+}
+
+function getWebpDimensions(buffer: Buffer): ImageDimensions | null {
+    if (
+        buffer.length < 30 ||
+        buffer.toString('ascii', 0, 4) !== 'RIFF' ||
+        buffer.toString('ascii', 8, 12) !== 'WEBP'
+    ) {
+        return null;
+    }
+
+    let offset = 12;
+    while (offset + 8 <= buffer.length) {
+        const chunkType = buffer.toString('ascii', offset, offset + 4);
+        const chunkSize = buffer.readUInt32LE(offset + 4);
+        const dataOffset = offset + 8;
+
+        if (dataOffset + chunkSize > buffer.length) {
+            return null;
+        }
+
+        if (chunkType === 'VP8X' && chunkSize >= 10) {
+            return {
+                width: readUInt24LE(buffer, dataOffset + 4) + 1,
+                height: readUInt24LE(buffer, dataOffset + 7) + 1
+            };
+        }
+
+        if (chunkType === 'VP8L' && chunkSize >= 5 && buffer[dataOffset] === 0x2f) {
+            const b1 = buffer[dataOffset + 1];
+            const b2 = buffer[dataOffset + 2];
+            const b3 = buffer[dataOffset + 3];
+            const b4 = buffer[dataOffset + 4];
+
+            return {
+                width: 1 + (((b2 & 0x3f) << 8) | b1),
+                height: 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6))
+            };
+        }
+
+        if (chunkType === 'VP8 ' && chunkSize >= 10) {
+            return {
+                width: buffer.readUInt16LE(dataOffset + 6) & 0x3fff,
+                height: buffer.readUInt16LE(dataOffset + 8) & 0x3fff
+            };
+        }
+
+        offset = dataOffset + chunkSize + (chunkSize % 2);
+    }
+
+    return null;
+}
+
+function getImageDimensions(buffer: Buffer): ImageDimensions | null {
+    return getPngDimensions(buffer) ?? getJpegDimensions(buffer) ?? getWebpDimensions(buffer);
 }
 
 async function ensureOutputDirExists() {
@@ -191,6 +325,8 @@ export async function POST(request: NextRequest) {
                                 b64_json: string;
                                 path?: string;
                                 output_format: string;
+                                width?: number;
+                                height?: number;
                             }> = [];
                             let finalUsage: OpenAI.Images.ImagesResponse['usage'] | undefined;
                             let imageIndex = 0;
@@ -207,10 +343,12 @@ export async function POST(request: NextRequest) {
                                 } else if (event.type === 'image_generation.completed') {
                                     const currentIndex = imageIndex;
                                     const filename = `${timestamp}-${currentIndex}.${fileExtension}`;
+                                    const b64Json = event.b64_json || '';
+                                    const buffer = b64Json ? Buffer.from(b64Json, 'base64') : null;
+                                    const dimensions = buffer ? getImageDimensions(buffer) : null;
 
                                     // Save to filesystem if in fs mode
-                                    if (effectiveStorageMode === 'fs' && event.b64_json) {
-                                        const buffer = Buffer.from(event.b64_json, 'base64');
+                                    if (effectiveStorageMode === 'fs' && buffer) {
                                         const filepath = path.join(outputDir, filename);
                                         await fs.writeFile(filepath, buffer);
                                         console.log(`Streaming: Saved image ${filename}`);
@@ -218,8 +356,9 @@ export async function POST(request: NextRequest) {
 
                                     const imageData = {
                                         filename,
-                                        b64_json: event.b64_json || '',
+                                        b64_json: b64Json,
                                         output_format: fileExtension,
+                                        ...(dimensions ?? {}),
                                         ...(effectiveStorageMode === 'fs' ? { path: `/api/image/${filename}` } : {})
                                     };
                                     completedImages.push(imageData);
@@ -228,9 +367,10 @@ export async function POST(request: NextRequest) {
                                         type: 'completed',
                                         index: currentIndex,
                                         filename,
-                                        b64_json: event.b64_json,
+                                        b64_json: b64Json,
                                         path: effectiveStorageMode === 'fs' ? `/api/image/${filename}` : undefined,
-                                        output_format: fileExtension
+                                        output_format: fileExtension,
+                                        ...(dimensions ?? {})
                                     };
                                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(completedEvent)}\n\n`));
 
@@ -335,6 +475,8 @@ export async function POST(request: NextRequest) {
                                 b64_json: string;
                                 path?: string;
                                 output_format: string;
+                                width?: number;
+                                height?: number;
                             }> = [];
                             let finalUsage: OpenAI.Images.ImagesResponse['usage'] | undefined;
                             let imageIndex = 0;
@@ -351,10 +493,12 @@ export async function POST(request: NextRequest) {
                                 } else if (event.type === 'image_edit.completed') {
                                     const currentIndex = imageIndex;
                                     const filename = `${timestamp}-${currentIndex}.${fileExtension}`;
+                                    const b64Json = event.b64_json || '';
+                                    const buffer = b64Json ? Buffer.from(b64Json, 'base64') : null;
+                                    const dimensions = buffer ? getImageDimensions(buffer) : null;
 
                                     // Save to filesystem if in fs mode
-                                    if (effectiveStorageMode === 'fs' && event.b64_json) {
-                                        const buffer = Buffer.from(event.b64_json, 'base64');
+                                    if (effectiveStorageMode === 'fs' && buffer) {
                                         const filepath = path.join(outputDir, filename);
                                         await fs.writeFile(filepath, buffer);
                                         console.log(`Streaming edit: Saved image ${filename}`);
@@ -362,8 +506,9 @@ export async function POST(request: NextRequest) {
 
                                     const imageData = {
                                         filename,
-                                        b64_json: event.b64_json || '',
+                                        b64_json: b64Json,
                                         output_format: fileExtension,
+                                        ...(dimensions ?? {}),
                                         ...(effectiveStorageMode === 'fs' ? { path: `/api/image/${filename}` } : {})
                                     };
                                     completedImages.push(imageData);
@@ -372,9 +517,10 @@ export async function POST(request: NextRequest) {
                                         type: 'completed',
                                         index: currentIndex,
                                         filename,
-                                        b64_json: event.b64_json,
+                                        b64_json: b64Json,
                                         path: effectiveStorageMode === 'fs' ? `/api/image/${filename}` : undefined,
-                                        output_format: fileExtension
+                                        output_format: fileExtension,
+                                        ...(dimensions ?? {})
                                     };
                                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(completedEvent)}\n\n`));
 
@@ -458,10 +604,20 @@ export async function POST(request: NextRequest) {
                 } else {
                 }
 
-                const imageResult: { filename: string; b64_json: string; path?: string; output_format: string } = {
+                const dimensions = getImageDimensions(buffer);
+
+                const imageResult: {
+                    filename: string;
+                    b64_json: string;
+                    path?: string;
+                    output_format: string;
+                    width?: number;
+                    height?: number;
+                } = {
                     filename: filename,
                     b64_json: imageData.b64_json,
-                    output_format: fileExtension
+                    output_format: fileExtension,
+                    ...(dimensions ?? {})
                 };
 
                 if (effectiveStorageMode === 'fs') {

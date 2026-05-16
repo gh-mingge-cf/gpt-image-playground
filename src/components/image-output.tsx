@@ -1,11 +1,13 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { ImagePreviewDialog, type ImagePreviewItem } from '@/components/image-preview-dialog';
 import { cn } from '@/lib/utils';
 import { Loader2, Send, Grid } from 'lucide-react';
 import Image from 'next/image';
+import * as React from 'react';
 
-type ImageInfo = {
+type ImageInfo = ImagePreviewItem & {
     path: string;
     filename: string;
 };
@@ -40,11 +42,19 @@ export function ImageOutput({
     baseImagePreviewUrl,
     streamingPreviewImages
 }: ImageOutputProps) {
+    const [previewInitialIndex, setPreviewInitialIndex] = React.useState(0);
+    const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+
     const handleSendClick = () => {
         // Send to edit only works when a single image is selected
         if (typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
             onSendToEdit(imageBatch[viewMode].filename);
         }
+    };
+
+    const openPreview = (index: number) => {
+        setPreviewInitialIndex(index);
+        setIsPreviewOpen(true);
     };
 
     const showCarousel = imageBatch && imageBatch.length > 1;
@@ -53,6 +63,15 @@ export function ImageOutput({
 
     return (
         <div className='flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-lg border border-white/20 bg-black p-4'>
+            {imageBatch && imageBatch.length > 0 && (
+                <ImagePreviewDialog
+                    images={imageBatch}
+                    initialIndex={previewInitialIndex}
+                    isOpen={isPreviewOpen}
+                    onOpenChange={setIsPreviewOpen}
+                />
+            )}
+
             <div className='relative flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
                 {isLoading ? (
                     streamingPreviewImages && streamingPreviewImages.size > 0 ? (
@@ -107,9 +126,11 @@ export function ImageOutput({
                         <div
                             className={`grid ${getGridColsClass(imageBatch.length)} max-h-full w-full max-w-full gap-1 p-1`}>
                             {imageBatch.map((img, index) => (
-                                <div
+                                <button
+                                    type='button'
                                     key={img.filename}
-                                    className='relative aspect-square overflow-hidden rounded border border-white/10'>
+                                    onDoubleClick={() => openPreview(index)}
+                                    className='relative aspect-square overflow-hidden rounded border border-white/10 outline-none transition-colors hover:border-white/30 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black'>
                                     <Image
                                         src={img.path}
                                         alt={`生成的图片 ${index + 1}`}
@@ -118,18 +139,23 @@ export function ImageOutput({
                                         sizes='(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw'
                                         unoptimized
                                     />
-                                </div>
+                                </button>
                             ))}
                         </div>
                     ) : imageBatch[viewMode] ? (
-                        <Image
-                            src={imageBatch[viewMode].path}
-                            alt={altText}
-                            width={512}
-                            height={512}
-                            className='max-h-full max-w-full object-contain'
-                            unoptimized
-                        />
+                        <button
+                            type='button'
+                            onDoubleClick={() => openPreview(viewMode)}
+                            className='flex h-full w-full items-center justify-center outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black'>
+                            <Image
+                                src={imageBatch[viewMode].path}
+                                alt={altText}
+                                width={imageBatch[viewMode].width ?? 512}
+                                height={imageBatch[viewMode].height ?? 512}
+                                className='max-h-full max-w-full object-contain'
+                                unoptimized
+                            />
+                        </button>
                     ) : (
                         <div className='text-center text-white/40'>
                             <p>图片显示出错。</p>

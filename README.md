@@ -32,7 +32,7 @@
 * **🖼️ 灵活的结果查看方式：** 支持网格查看整批结果，也可切换到单图查看。
 * **🚀 发送到编辑：** 可将刚生成的图片或历史记录中的图片一键发送到编辑表单。
 * **📋 粘贴到编辑：** 支持从剪贴板直接粘贴图片到编辑模式的源图区域。
-* **🔐 运行时 API 设置：** 无需重启应用，可直接在 UI 中修改服务端使用的 OpenAI API Key 和 Base URL，新请求会立即生效。
+* **🔐 运行时 API 设置：** 无需重启应用，可直接在 UI 中保存多组服务端 OpenAI API 配置，并切换当前使用的 Key 和 Base URL，新请求会立即生效。
 * **💾 存储模式：** 通过 `NEXT_PUBLIC_IMAGE_STORAGE_MODE` 支持两种模式：
 * **文件系统（默认）：** 图片保存在服务端 `./generated-images`。
 * **IndexedDB：** 图片直接保存在浏览器的 IndexedDB，适合无持久化磁盘的部署环境。
@@ -56,7 +56,7 @@
 
 部署时会要求填写 `OPENAI_API_KEY` 和 `APP_PASSWORD`。在 Vercel 上必须将 `NEXT_PUBLIC_IMAGE_STORAGE_MODE` 设置为 `indexeddb`。
 
-> **重要：** 运行时 API 设置会将覆盖配置保存到服务器文件系统。这种方式适合 Docker、虚拟机或带持久磁盘的主机，但 **不适合作为 Vercel 等无状态 Serverless 环境的持久配置方案**。在 Vercel 上优先使用环境变量。
+> **重要：** 运行时 API 设置会将多组配置和当前启用项保存到服务器文件系统。这种方式适合 Docker、虚拟机或带持久磁盘的主机，但 **不适合作为 Vercel 等无状态 Serverless 环境的持久配置方案**。在 Vercel 上优先使用环境变量。
 
 说明：如果未设置 `NEXT_PUBLIC_IMAGE_STORAGE_MODE`，应用会自动检测当前是否运行在 Vercel（通过 `VERCEL` 或 `NEXT_PUBLIC_VERCEL_ENV`），如果是则默认使用 `indexeddb`，否则默认使用 `fs`。你也可以显式设置为 `fs` 或 `indexeddb` 覆盖自动判断。
 
@@ -109,21 +109,21 @@ docker compose up -d
 
 不需要重新执行 `docker compose build`。
 
-### 3. 在界面中配置或轮换 API Key
+### 3. 在界面中管理 API 配置
 
 1. 点击右上角 **API 设置**。
 2. 如果设置了 `APP_PASSWORD`，先输入密码。
-3. 将新的 API Key 粘贴到 **新 API Key** 输入框并点击 **保存**。
-4. 后续图片请求会立即使用新 Key，无需重启容器。
+3. 新建或选中一组配置，填写名称、API Key 和 Base URL。
+4. 点击列表里的启用按钮切换当前使用的配置，后续图片请求会立即生效，无需重启容器。
 
 运行时设置会持久化到 `/app/data/runtime-config.json`，而 `docker-compose.yml` 已将其挂载到 `gpt-image-config` Docker 卷中。
 
 ### 运行时覆盖规则
 
-* 已保存的运行时 API Key 会覆盖 `OPENAI_API_KEY`。
-* 已保存的运行时 Base URL 会覆盖 `OPENAI_API_BASE_URL`。
-* **清除已保存的 API Key** 只会移除运行时 API Key 覆盖，不会影响 Base URL。
-* **重置运行时覆盖** 会清除所有运行时覆盖并回退到环境变量。
+* 当前启用的运行时配置会覆盖对应的 `OPENAI_API_KEY` 和 `OPENAI_API_BASE_URL`。
+* 只填写其中一项时，另一项会继续回退到环境变量或默认值。
+* **清除密钥** 只会移除所选配置里的 API Key，不会影响 Base URL。
+* **重置所有运行时配置** 会清除所有保存的配置并回退到环境变量。
 
 ### 更新机制说明
 
@@ -200,11 +200,12 @@ OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
 
 #### 可选：通过界面修改运行时 API 设置
 
-右上角的 **API 设置** 支持在不重启应用的情况下保存运行时 API Key 和 Base URL。
+右上角的 **API 设置** 支持在不重启应用的情况下保存多组运行时 API 配置。
 
-* **新 API Key** 留空时，会保留当前 Key。
+* 可以保存多组配置，并在它们之间切换当前启用项。
+* 对已有配置，**API Key** 留空时会保留当前密钥。
 * 清空 **Base URL** 后再保存，会回退到 `OPENAI_API_BASE_URL` 或 OpenAI 默认端点。
-* **重置运行时覆盖** 会删除保存的运行时配置文件，并重新回退到环境变量。
+* **重置所有运行时配置** 会删除保存的运行时配置文件，并重新回退到环境变量。
 
 本地运行时，这些设置会存储在 `./data/runtime-config.json`。
 

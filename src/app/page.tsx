@@ -7,6 +7,7 @@ import { ImageOutput } from '@/components/image-output';
 import { PasswordDialog } from '@/components/password-dialog';
 import {
     RuntimeConfigDialog,
+    type RuntimeConfigDialogProfileStatus,
     type RuntimeConfigDialogStatus
 } from '@/components/runtime-config-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -72,6 +73,11 @@ type ApiImageResponseItem = {
     path?: string;
 };
 
+type RuntimeConfigDialogResponse = RuntimeConfigDialogStatus & {
+    savedProfileId?: string;
+    error?: string;
+};
+
 export default function HomePage() {
     const [mode, setMode] = React.useState<'generate' | 'edit'>('generate');
     const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(null);
@@ -94,6 +100,8 @@ export default function HomePage() {
     const [dialogCheckboxStateSkipConfirm, setDialogCheckboxStateSkipConfirm] = React.useState<boolean>(false);
     const [isRuntimeConfigDialogOpen, setIsRuntimeConfigDialogOpen] = React.useState(false);
     const [runtimeConfigStatus, setRuntimeConfigStatus] = React.useState<RuntimeConfigDialogStatus | null>(null);
+    const [runtimeConfigSelectedProfileId, setRuntimeConfigSelectedProfileId] = React.useState<string | null>(null);
+    const [runtimeConfigProfileName, setRuntimeConfigProfileName] = React.useState('');
     const [runtimeConfigApiKey, setRuntimeConfigApiKey] = React.useState('');
     const [runtimeConfigBaseURL, setRuntimeConfigBaseURL] = React.useState('');
     const [runtimeConfigError, setRuntimeConfigError] = React.useState<string | null>(null);
@@ -287,6 +295,28 @@ export default function HomePage() {
         return hashHex;
     }
 
+    const loadRuntimeConfigProfileIntoForm = React.useCallback((profile: RuntimeConfigDialogProfileStatus | null) => {
+        setRuntimeConfigSelectedProfileId(profile?.id ?? null);
+        setRuntimeConfigProfileName(profile?.name ?? '');
+        setRuntimeConfigApiKey('');
+        setRuntimeConfigBaseURL(profile?.baseURL ?? '');
+    }, []);
+
+    const selectRuntimeConfigProfileFromStatus = React.useCallback(
+        (status: RuntimeConfigDialogStatus, preferredProfileId: string | null = null) => {
+            const preferredProfile = preferredProfileId
+                ? status.profiles.find((profile) => profile.id === preferredProfileId)
+                : null;
+            const activeProfile = status.activeProfileId
+                ? status.profiles.find((profile) => profile.id === status.activeProfileId)
+                : null;
+            const nextProfile = preferredProfile ?? activeProfile ?? status.profiles[0] ?? null;
+
+            loadRuntimeConfigProfileIntoForm(nextProfile);
+        },
+        [loadRuntimeConfigProfileIntoForm]
+    );
+
     const fetchRuntimeConfigStatus = React.useCallback(
         async ({
             openDialog = false,
@@ -304,7 +334,7 @@ export default function HomePage() {
                 }
 
                 const response = await fetch('/api/runtime-config', { headers });
-                const result = await response.json();
+                const result = (await response.json()) as RuntimeConfigDialogResponse;
 
                 if (!response.ok) {
                     if (response.status === 401 && isPasswordRequiredByBackend) {
@@ -317,8 +347,12 @@ export default function HomePage() {
                 }
 
                 setRuntimeConfigStatus(result);
-                setRuntimeConfigApiKey('');
-                setRuntimeConfigBaseURL(result.baseURL || '');
+                selectRuntimeConfigProfileFromStatus(
+                    result,
+                    runtimeConfigSelectedProfileId && result.profiles.some((profile) => profile.id === runtimeConfigSelectedProfileId)
+                        ? runtimeConfigSelectedProfileId
+                        : result.savedProfileId ?? result.activeProfileId
+                );
 
                 if (openDialog) {
                     setIsRuntimeConfigDialogOpen(true);
@@ -334,10 +368,10 @@ export default function HomePage() {
                     setIsRuntimeConfigDialogOpen(true);
                 }
             } finally {
-                setIsLoadingRuntimeConfig(false);
-            }
-        },
-        [clientPasswordHash, isPasswordRequiredByBackend]
+            setIsLoadingRuntimeConfig(false);
+        }
+    },
+        [clientPasswordHash, isPasswordRequiredByBackend, runtimeConfigSelectedProfileId, selectRuntimeConfigProfileFromStatus]
     );
 
     const handleSavePassword = async (password: string) => {
@@ -377,10 +411,35 @@ export default function HomePage() {
         await fetchRuntimeConfigStatus({ openDialog: true });
     }, [clientPasswordHash, fetchRuntimeConfigStatus, isPasswordRequiredByBackend]);
 
-    const handleSaveRuntimeConfig = React.useCallback(async () => {
+    const handleCreateRuntimeConfigProfile = React.useCallback(() => {
+        loadRuntimeConfigProfileIntoForm(null);
+        setRuntimeConfigError(null);
+        setRuntimeConfigSuccess(null);
+    }, [loadRuntimeConfigProfileIntoForm]);
+
+    const handleSelectRuntimeConfigProfile = React.useCallback(
+        (profileId: string | null) => {
+            const profile = profileId
+                ? runtimeConfigStatus?.profiles.find((candidate) => candidate.id === profileId) ?? null
+                : null;
+            loadRuntimeConfigProfileIntoForm(profile);
+            setRuntimeConfigError(null);
+            setRuntimeConfigSuccess(null);
+        },
+        [loadRuntimeConfigProfileIntoForm, runtimeConfigStatus]
+    );
+
+    const handleSaveRuntimeConfigProfile = React.useCallback(async () => {
         if (isPasswordRequiredByBackend && !clientPasswordHash) {
             setPasswordDialogContext('settings');
             setIsPasswordDialogOpen(true);
+            return;
+        }
+
+        const profileName = runtimeConfigProfileName.trim();
+        if (!profileName) {
+            setRuntimeConfigError('配置名称不能为空。');
+            setRuntimeConfigSuccess(null);
             return;
         }
 
@@ -389,12 +448,17 @@ export default function HomePage() {
         setRuntimeConfigSuccess(null);
 
         try {
-            const payload: Record<string, string> = {
-                baseURL: runtimeConfigBaseURL.trim()
+            const payload: Record<string, unknown> = {
+                saveProfile: {
+                    id: runtimeConfigSelectedProfileId ?? undefined,
+                    name: profileName,
+                    baseURL: runtimeConfigBaseURL,
+                    keepApiKey: Boolean(runtimeConfigSelectedProfileId && !runtimeConfigApiKey.trim())
+                }
             };
 
             if (runtimeConfigApiKey.trim()) {
-                payload.apiKey = runtimeConfigApiKey.trim();
+                (payload.saveProfile as Record<string, unknown>).apiKey = runtimeConfigApiKey.trim();
             }
 
             if (clientPasswordHash) {
@@ -406,29 +470,52 @@ export default function HomePage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            const result = await response.json();
+            const result = (await response.json()) as RuntimeConfigDialogResponse;
 
             if (!response.ok) {
                 if (response.status === 401 && isPasswordRequiredByBackend) {
                     setPasswordDialogContext('settings');
                     setIsPasswordDialogOpen(true);
                 }
-                throw new Error(result.error || `保存 API 设置失败（${response.status}）。`);
+                throw new Error((result as { error?: string }).error || `保存 API 设置失败（${response.status}）。`);
             }
 
             setRuntimeConfigStatus(result);
-            setRuntimeConfigApiKey('');
-            setRuntimeConfigBaseURL(result.baseURL || '');
-            setRuntimeConfigSuccess('API 设置已保存，新的请求会立即使用。');
+            selectRuntimeConfigProfileFromStatus(
+                result,
+                result.savedProfileId ?? runtimeConfigSelectedProfileId ?? result.activeProfileId
+            );
+            setRuntimeConfigSuccess(
+                runtimeConfigSelectedProfileId ? '配置已保存，新的请求会立即使用当前启用项。' : '新配置已创建。'
+            );
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : '保存 API 设置失败。';
             setRuntimeConfigError(message);
         } finally {
             setIsSavingRuntimeConfig(false);
         }
-    }, [clientPasswordHash, isPasswordRequiredByBackend, runtimeConfigApiKey, runtimeConfigBaseURL]);
+    }, [
+        clientPasswordHash,
+        isPasswordRequiredByBackend,
+        runtimeConfigApiKey,
+        runtimeConfigBaseURL,
+        runtimeConfigProfileName,
+        runtimeConfigSelectedProfileId,
+        selectRuntimeConfigProfileFromStatus
+    ]);
 
-    const handleClearRuntimeApiKey = React.useCallback(async () => {
+    const handleDeleteRuntimeConfigProfile = React.useCallback(async () => {
+        if (!runtimeConfigSelectedProfileId) {
+            return;
+        }
+
+        if (typeof window !== 'undefined') {
+            const confirmed = window.confirm(`确定删除配置“${runtimeConfigProfileName || '未命名配置'}”吗？`);
+            if (!confirmed) {
+                return;
+            }
+        }
+
         if (isPasswordRequiredByBackend && !clientPasswordHash) {
             setPasswordDialogContext('settings');
             setIsPasswordDialogOpen(true);
@@ -444,31 +531,141 @@ export default function HomePage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    clearApiKey: true,
+                    deleteProfileId: runtimeConfigSelectedProfileId,
                     passwordHash: clientPasswordHash ?? undefined
                 })
             });
-            const result = await response.json();
+            const result = (await response.json()) as RuntimeConfigDialogResponse;
 
             if (!response.ok) {
                 if (response.status === 401 && isPasswordRequiredByBackend) {
                     setPasswordDialogContext('settings');
                     setIsPasswordDialogOpen(true);
                 }
-                throw new Error(result.error || `清除已保存的 API Key 失败（${response.status}）。`);
+                throw new Error((result as { error?: string }).error || `删除配置失败（${response.status}）。`);
             }
 
             setRuntimeConfigStatus(result);
-            setRuntimeConfigApiKey('');
-            setRuntimeConfigBaseURL(result.baseURL || '');
-            setRuntimeConfigSuccess('已清除保存的运行时 API Key。');
+            selectRuntimeConfigProfileFromStatus(result, result.activeProfileId);
+            setRuntimeConfigSuccess('配置已删除。');
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : '清除已保存的 API Key 失败。';
+            const message = err instanceof Error ? err.message : '删除配置失败。';
             setRuntimeConfigError(message);
         } finally {
             setIsSavingRuntimeConfig(false);
         }
-    }, [clientPasswordHash, isPasswordRequiredByBackend]);
+    }, [
+        clientPasswordHash,
+        isPasswordRequiredByBackend,
+        runtimeConfigProfileName,
+        runtimeConfigSelectedProfileId,
+        selectRuntimeConfigProfileFromStatus
+    ]);
+
+    const handleActivateRuntimeConfigProfile = React.useCallback(
+        async (profileId: string) => {
+            if (isPasswordRequiredByBackend && !clientPasswordHash) {
+                setPasswordDialogContext('settings');
+                setIsPasswordDialogOpen(true);
+                return;
+            }
+
+            setIsSavingRuntimeConfig(true);
+            setRuntimeConfigError(null);
+            setRuntimeConfigSuccess(null);
+
+            try {
+                const response = await fetch('/api/runtime-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        activateProfileId: profileId,
+                        passwordHash: clientPasswordHash ?? undefined
+                    })
+                });
+                const result = (await response.json()) as RuntimeConfigDialogResponse;
+
+                if (!response.ok) {
+                    if (response.status === 401 && isPasswordRequiredByBackend) {
+                        setPasswordDialogContext('settings');
+                        setIsPasswordDialogOpen(true);
+                    }
+                    throw new Error((result as { error?: string }).error || `切换配置失败（${response.status}）。`);
+                }
+
+                setRuntimeConfigStatus(result);
+                selectRuntimeConfigProfileFromStatus(
+                    result,
+                    runtimeConfigSelectedProfileId && result.profiles.some((profile) => profile.id === runtimeConfigSelectedProfileId)
+                        ? runtimeConfigSelectedProfileId
+                        : profileId
+                );
+                const activatedProfile = result.profiles.find((profile) => profile.id === profileId);
+                setRuntimeConfigSuccess(`已切换到「${activatedProfile?.name ?? '当前配置'}」。`);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : '切换配置失败。';
+                setRuntimeConfigError(message);
+            } finally {
+                setIsSavingRuntimeConfig(false);
+            }
+        },
+        [
+            clientPasswordHash,
+            isPasswordRequiredByBackend,
+            runtimeConfigSelectedProfileId,
+            selectRuntimeConfigProfileFromStatus
+        ]
+    );
+
+    const handleClearRuntimeProfileApiKey = React.useCallback(async () => {
+        if (!runtimeConfigSelectedProfileId) {
+            return;
+        }
+
+        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+            setPasswordDialogContext('settings');
+            setIsPasswordDialogOpen(true);
+            return;
+        }
+
+        setIsSavingRuntimeConfig(true);
+        setRuntimeConfigError(null);
+        setRuntimeConfigSuccess(null);
+
+        try {
+            const response = await fetch('/api/runtime-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    clearProfileApiKeyId: runtimeConfigSelectedProfileId,
+                    passwordHash: clientPasswordHash ?? undefined
+                })
+            });
+            const result = (await response.json()) as RuntimeConfigDialogResponse;
+
+            if (!response.ok) {
+                if (response.status === 401 && isPasswordRequiredByBackend) {
+                    setPasswordDialogContext('settings');
+                    setIsPasswordDialogOpen(true);
+                }
+                throw new Error((result as { error?: string }).error || `清除密钥失败（${response.status}）。`);
+            }
+
+            setRuntimeConfigStatus(result);
+            selectRuntimeConfigProfileFromStatus(result, runtimeConfigSelectedProfileId ?? result.activeProfileId);
+            setRuntimeConfigSuccess('已清除所选配置的 API Key。');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : '清除密钥失败。';
+            setRuntimeConfigError(message);
+        } finally {
+            setIsSavingRuntimeConfig(false);
+        }
+    }, [
+        clientPasswordHash,
+        isPasswordRequiredByBackend,
+        runtimeConfigSelectedProfileId,
+        selectRuntimeConfigProfileFromStatus
+    ]);
 
     const handleResetRuntimeConfig = React.useCallback(async () => {
         if (isPasswordRequiredByBackend && !clientPasswordHash) {
@@ -490,19 +687,18 @@ export default function HomePage() {
                     passwordHash: clientPasswordHash ?? undefined
                 })
             });
-            const result = await response.json();
+            const result = (await response.json()) as RuntimeConfigDialogResponse;
 
             if (!response.ok) {
                 if (response.status === 401 && isPasswordRequiredByBackend) {
                     setPasswordDialogContext('settings');
                     setIsPasswordDialogOpen(true);
                 }
-                throw new Error(result.error || `重置 API 设置失败（${response.status}）。`);
+                throw new Error((result as { error?: string }).error || `重置 API 设置失败（${response.status}）。`);
             }
 
             setRuntimeConfigStatus(result);
-            setRuntimeConfigApiKey('');
-            setRuntimeConfigBaseURL(result.baseURL || '');
+            loadRuntimeConfigProfileIntoForm(null);
             setRuntimeConfigSuccess('运行时覆盖已清除，当前重新使用环境变量。');
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : '重置 API 设置失败。';
@@ -510,7 +706,7 @@ export default function HomePage() {
         } finally {
             setIsSavingRuntimeConfig(false);
         }
-    }, [clientPasswordHash, isPasswordRequiredByBackend]);
+    }, [clientPasswordHash, isPasswordRequiredByBackend, loadRuntimeConfigProfileIntoForm]);
 
     const getMimeTypeFromFormat = (format: string): string => {
         if (format === 'jpeg') return 'image/jpeg';
@@ -1099,12 +1295,19 @@ export default function HomePage() {
                 isOpen={isRuntimeConfigDialogOpen}
                 onOpenChange={setIsRuntimeConfigDialogOpen}
                 status={runtimeConfigStatus}
+                selectedProfileId={runtimeConfigSelectedProfileId}
+                onSelectProfile={handleSelectRuntimeConfigProfile}
+                onCreateProfile={handleCreateRuntimeConfigProfile}
+                profileNameValue={runtimeConfigProfileName}
+                onProfileNameChange={setRuntimeConfigProfileName}
                 apiKeyValue={runtimeConfigApiKey}
                 onApiKeyChange={setRuntimeConfigApiKey}
                 baseURLValue={runtimeConfigBaseURL}
                 onBaseURLChange={setRuntimeConfigBaseURL}
-                onSave={handleSaveRuntimeConfig}
-                onClearRuntimeApiKey={handleClearRuntimeApiKey}
+                onSaveProfile={handleSaveRuntimeConfigProfile}
+                onDeleteProfile={handleDeleteRuntimeConfigProfile}
+                onActivateProfile={handleActivateRuntimeConfigProfile}
+                onClearProfileApiKey={handleClearRuntimeProfileApiKey}
                 onResetToEnv={handleResetRuntimeConfig}
                 isLoading={isLoadingRuntimeConfig}
                 isSaving={isSavingRuntimeConfig}

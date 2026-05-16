@@ -150,8 +150,8 @@ export function ImageOutput({
                             <Image
                                 src={imageBatch[viewMode].path}
                                 alt={altText}
-                                width={imageBatch[viewMode].width ?? 512}
-                                height={imageBatch[viewMode].height ?? 512}
+                                width={512}
+                                height={512}
                                 className='max-h-full max-w-full object-contain'
                                 unoptimized
                             />

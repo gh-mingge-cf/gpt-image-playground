@@ -76,22 +76,183 @@ const formatSettingValue = (value: string | undefined): string => {
     }
 };
 
-const formatResolution = (images: HistoryMetadata['images']): string => {
-    const imageDimensions = images
-        .filter((image) => image.width && image.height)
-        .map((image) => `${image.width} x ${image.height}`);
+type ImageFileMetadata = {
+    width: number;
+    height: number;
+    sizeBytes: number;
+};
 
-    if (imageDimensions.length === 0) {
+const imageMetadataCache = new Map<string, Promise<ImageFileMetadata | null>>();
+
+const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) {
+        return `${bytes} B`;
+    }
+
+    const units = ['KB', 'MB', 'GB'];
+    let value = bytes / 1024;
+    let unitIndex = 0;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex++;
+    }
+
+    return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${units[unitIndex]}`;
+};
+
+const formatActualResolution = (metadata: ImageFileMetadata[] | null): string => {
+    if (!metadata) {
+        return '读取中...';
+    }
+
+    if (metadata.length === 0) {
         return '未知';
     }
 
-    const uniqueDimensions = Array.from(new Set(imageDimensions));
+    const uniqueDimensions = Array.from(new Set(metadata.map((image) => `${image.width} x ${image.height}`)));
     if (uniqueDimensions.length === 1) {
         return uniqueDimensions[0];
     }
 
     return `${uniqueDimensions[0]} 等 ${uniqueDimensions.length} 种`;
 };
+
+const formatRequestedSize = (requestedSize: string | undefined): string => {
+    if (!requestedSize) {
+        return '未记录';
+    }
+
+    return formatSettingValue(requestedSize);
+};
+
+const formatRequestedVsActualSize = (requestedSize: string | undefined, metadata: ImageFileMetadata[] | null): string => {
+    return `${formatRequestedSize(requestedSize)} -> ${formatActualResolution(metadata)}`;
+};
+
+const formatBatchFileSize = (metadata: ImageFileMetadata[] | null, imageCount: number): string => {
+    if (!metadata) {
+        return '读取中...';
+    }
+
+    if (metadata.length === 0) {
+        return '未知';
+    }
+
+    const totalBytes = metadata.reduce((sum, image) => sum + image.sizeBytes, 0);
+    if (imageCount <= 1) {
+        return formatFileSize(totalBytes);
+    }
+
+    return `${imageCount} 张，共 ${formatFileSize(totalBytes)}`;
+};
+
+const formatApiConfigName = (item: HistoryMetadata): string => {
+    if (!('apiConfigProfileName' in item)) {
+        return '未记录';
+    }
+
+    return item.apiConfigProfileName || '环境变量 / 默认值';
+};
+
+const loadImageDimensions = (src: string): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve, reject) => {
+        const image = new window.Image();
+        image.onload = () => {
+            resolve({
+                width: image.naturalWidth,
+                height: image.naturalHeight
+            });
+        };
+        image.onerror = () => reject(new Error('无法读取图片尺寸。'));
+        image.src = src;
+    });
+};
+
+const loadImageFileMetadata = (src: string): Promise<ImageFileMetadata | null> => {
+    const cached = imageMetadataCache.get(src);
+    if (cached) {
+        return cached;
+    }
+
+    const metadataPromise = Promise.all([loadImageDimensions(src), fetch(src).then((response) => response.blob())])
+        .then(([dimensions, blob]) => ({
+            ...dimensions,
+            sizeBytes: blob.size
+        }))
+        .catch((error) => {
+            console.warn('Failed to read image metadata:', error);
+            return null;
+        });
+
+    imageMetadataCache.set(src, metadataPromise);
+
+    return metadataPromise;
+};
+
+function HistoryImageDetails({
+    item,
+    getImageSrc
+}: {
+    item: HistoryMetadata;
+    getImageSrc: (filename: string) => string | undefined;
+}) {
+    const [metadata, setMetadata] = React.useState<ImageFileMetadata[] | null>(null);
+
+    React.useEffect(() => {
+        let isCancelled = false;
+        const originalStorageMode = item.storageModeUsed || 'fs';
+
+        setMetadata(null);
+
+        Promise.all(
+            item.images.map(async (image) => {
+                const src =
+                    originalStorageMode === 'indexeddb'
+                        ? getImageSrc(image.filename)
+                        : `/api/image/${image.filename}`;
+
+                if (!src) {
+                    return null;
+                }
+
+                return loadImageFileMetadata(src);
+            })
+        ).then((loadedMetadata) => {
+            if (!isCancelled) {
+                setMetadata(loadedMetadata.filter((image): image is ImageFileMetadata => Boolean(image)));
+            }
+        });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [getImageSrc, item.images, item.storageModeUsed]);
+
+    return (
+        <>
+            <p>
+                <span className='font-medium text-white/80'>时间：</span>{' '}
+                {new Date(item.timestamp).toLocaleString()}
+            </p>
+            <p>
+                <span className='font-medium text-white/80'>耗时：</span> {formatDuration(item.durationMs)}
+            </p>
+            <p>
+                <span className='font-medium text-white/80'>尺寸：</span>{' '}
+                {formatRequestedVsActualSize(item.requestedSize, metadata)}
+            </p>
+            <p>
+                <span className='font-medium text-white/80'>文件：</span>{' '}
+                {formatBatchFileSize(metadata, item.images.length)}
+            </p>
+            <p title={formatApiConfigName(item)}>
+                <span className='font-medium text-white/80'>API 配置：</span>{' '}
+                <span className='break-all'>{formatApiConfigName(item)}</span>
+            </p>
+        </>
+    );
+}
 
 function HistoryPanelImpl({
     history,
@@ -151,10 +312,7 @@ function HistoryPanelImpl({
 
             previewItems.push({
                 path,
-                filename: image.filename,
-                ...(typeof image.width === 'number' && typeof image.height === 'number'
-                    ? { width: image.width, height: image.height }
-                    : {})
+                filename: image.filename
             });
 
             return previewItems;
@@ -460,17 +618,10 @@ function HistoryPanelImpl({
                                     </div>
 
                                     <div className='space-y-1 rounded-b-md border border-t-0 border-neutral-700 bg-black p-2 text-xs text-white/60'>
-                                        <p title={`生成时间：${new Date(item.timestamp).toLocaleString()}`}>
-                                            <span className='font-medium text-white/80'>耗时：</span>{' '}
-                                            {formatDuration(item.durationMs)}
-                                        </p>
+                                        <HistoryImageDetails item={item} getImageSrc={getImageSrc} />
                                         <p>
                                             <span className='font-medium text-white/80'>模型：</span>{' '}
                                             {item.model || 'gpt-image-1'}
-                                        </p>
-                                        <p>
-                                            <span className='font-medium text-white/80'>分辨率：</span>{' '}
-                                            {formatResolution(item.images)}
                                         </p>
                                         <p>
                                             <span className='font-medium text-white/80'>质量：</span>{' '}

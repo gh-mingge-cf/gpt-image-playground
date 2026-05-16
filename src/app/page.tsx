@@ -21,8 +21,6 @@ import * as React from 'react';
 
 type HistoryImage = {
     filename: string;
-    width?: number;
-    height?: number;
 };
 
 export type HistoryMetadata = {
@@ -38,6 +36,9 @@ export type HistoryMetadata = {
     costDetails: CostDetails | null;
     output_format?: GenerationFormData['output_format'];
     model?: GptImageModel;
+    requestedSize?: string;
+    apiConfigProfileId?: string | null;
+    apiConfigProfileName?: string | null;
 };
 
 type DrawnPoint = {
@@ -73,8 +74,14 @@ type ApiImageResponseItem = {
     b64_json?: string;
     output_format: string;
     path?: string;
-    width?: number;
-    height?: number;
+};
+
+type ApiImagesResponse = {
+    images?: ApiImageResponseItem[];
+    usage?: Parameters<typeof calculateApiCost>[0];
+    error?: string;
+    apiConfigProfileId?: string | null;
+    apiConfigProfileName?: string | null;
 };
 
 type RuntimeConfigDialogResponse = RuntimeConfigDialogStatus & {
@@ -85,8 +92,6 @@ type RuntimeConfigDialogResponse = RuntimeConfigDialogStatus & {
 type DisplayImage = {
     path: string;
     filename: string;
-    width?: number;
-    height?: number;
 };
 
 export default function HomePage() {
@@ -754,6 +759,8 @@ export default function HomePage() {
             apiFormData.append('partial_images', partialImages.toString());
         }
 
+        let requestedSizeForHistory = 'auto';
+
         if (mode === 'generate') {
             const genData = formData as GenerationFormData;
             apiFormData.append('model', genModel);
@@ -763,6 +770,7 @@ export default function HomePage() {
                 genSize === 'custom'
                     ? `${genCustomWidth}x${genCustomHeight}`
                     : (getPresetDimensions(genSize, genModel) ?? genSize);
+            requestedSizeForHistory = genSizeToSend;
             apiFormData.append('size', genSizeToSend);
             apiFormData.append('quality', genQuality);
             apiFormData.append('output_format', genOutputFormat);
@@ -782,6 +790,7 @@ export default function HomePage() {
                 editSize === 'custom'
                     ? `${editCustomWidth}x${editCustomHeight}`
                     : (getPresetDimensions(editSize, editModel) ?? editSize);
+            requestedSizeForHistory = editSizeToSend;
             apiFormData.append('size', editSizeToSend);
             apiFormData.append('quality', editQuality);
 
@@ -869,9 +878,7 @@ export default function HomePage() {
                                         const newHistoryEntry: HistoryMetadata = {
                                             timestamp: batchTimestamp,
                                             images: event.images.map((img: ApiImageResponseItem) => ({
-                                                filename: img.filename,
-                                                width: img.width,
-                                                height: img.height
+                                                filename: img.filename
                                             })),
                                             storageModeUsed: effectiveStorageModeClient,
                                             durationMs: durationMs,
@@ -882,7 +889,10 @@ export default function HomePage() {
                                             prompt: historyPrompt,
                                             mode: mode,
                                             costDetails: costDetails,
-                                            model: currentModel
+                                            model: currentModel,
+                                            requestedSize: requestedSizeForHistory,
+                                            apiConfigProfileId: event.apiConfigProfileId ?? null,
+                                            apiConfigProfileName: event.apiConfigProfileName ?? null
                                         };
 
                                         let newImageBatchPromises: Promise<DisplayImage | null>[] = [];
@@ -907,9 +917,7 @@ export default function HomePage() {
 
                                                         return {
                                                             filename: img.filename,
-                                                            path: blobUrl,
-                                                            width: img.width,
-                                                            height: img.height
+                                                            path: blobUrl
                                                         };
                                                     } catch (dbError) {
                                                         console.error(
@@ -930,9 +938,7 @@ export default function HomePage() {
                                                 .map((img: ApiImageResponseItem) =>
                                                     Promise.resolve({
                                                         path: img.path!,
-                                                        filename: img.filename,
-                                                        width: img.width,
-                                                        height: img.height
+                                                        filename: img.filename
                                                     })
                                                 );
                                         }
@@ -959,7 +965,7 @@ export default function HomePage() {
             }
 
             // Non-streaming response handling (original code)
-            const result = await response.json();
+            const result = (await response.json()) as ApiImagesResponse;
 
             if (!response.ok) {
                 if (response.status === 401 && isPasswordRequiredByBackend) {
@@ -1003,9 +1009,7 @@ export default function HomePage() {
                 const newHistoryEntry: HistoryMetadata = {
                     timestamp: batchTimestamp,
                     images: result.images.map((img: ApiImageResponseItem) => ({
-                        filename: img.filename,
-                        width: img.width,
-                        height: img.height
+                        filename: img.filename
                     })),
                     storageModeUsed: effectiveStorageModeClient,
                     durationMs: durationMs,
@@ -1016,7 +1020,10 @@ export default function HomePage() {
                     prompt: historyPrompt,
                     mode: mode,
                     costDetails: costDetails,
-                    model: currentModel
+                    model: currentModel,
+                    requestedSize: requestedSizeForHistory,
+                    apiConfigProfileId: result.apiConfigProfileId ?? null,
+                    apiConfigProfileName: result.apiConfigProfileName ?? null
                 };
 
                 let newImageBatchPromises: Promise<DisplayImage | null>[] = [];
@@ -1041,9 +1048,7 @@ export default function HomePage() {
 
                                 return {
                                     filename: img.filename,
-                                    path: blobUrl,
-                                    width: img.width,
-                                    height: img.height
+                                    path: blobUrl
                                 };
                             } catch (dbError) {
                                 console.error(`Error saving blob ${img.filename} to IndexedDB:`, dbError);
@@ -1061,9 +1066,7 @@ export default function HomePage() {
                         .map((img: ApiImageResponseItem) =>
                             Promise.resolve({
                                 path: img.path!,
-                                filename: img.filename,
-                                width: img.width,
-                                height: img.height
+                                filename: img.filename
                             })
                         );
                 }
@@ -1106,9 +1109,7 @@ export default function HomePage() {
                 if (path) {
                     return {
                         path,
-                        filename: imgInfo.filename,
-                        width: imgInfo.width,
-                        height: imgInfo.height
+                        filename: imgInfo.filename
                     };
                 } else {
                     console.warn(
